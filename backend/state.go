@@ -435,13 +435,16 @@ func tailSessionActivity(s *Session, path string, size int64) {
 
 			// Extract file path from tool input
 			if fp, ok := b.Input["file_path"].(string); ok {
-				display := fp
-				if projectRoot != "" {
-					if rel, err := filepath.Rel(projectRoot, fp); err == nil {
-						display = filepath.ToSlash(rel)
+				// Only include files that still exist on disk
+				if _, statErr := os.Stat(fp); statErr == nil {
+					display := fp
+					if projectRoot != "" {
+						if rel, err := filepath.Rel(projectRoot, fp); err == nil {
+							display = filepath.ToSlash(rel)
+						}
 					}
+					filesTouched[display] = true
 				}
-				filesTouched[display] = true
 				if !foundLast {
 					s.LastToolUse = b.Name
 					s.LastToolTarget = filepath.Base(fp)
