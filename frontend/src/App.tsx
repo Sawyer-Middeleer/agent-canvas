@@ -1,20 +1,32 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Canvas } from './Canvas';
 import { DetailPane } from './components/DetailPane';
-import { useProjects, useSkills, useConfig } from './hooks/useAPI';
+import { ProjectContextBar } from './components/ProjectContextBar';
+import { useProjects, useSessions, useSkills, useConfig } from './hooks/useAPI';
 import type { Session } from './types';
 import './App.css';
-
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3333' : '';
 
 function App() {
   const { projects, loading, error } = useProjects();
   const skills = useSkills();
   const config = useConfig();
-  const [sessionsByProject, setSessionsByProject] = useState<Record<string, Session[]>>({});
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('__all__');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<{ session: Session; projectId: string } | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
+
+  // Auto-select first project once loaded
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
+  const { sessions: rawSessions, loading: sessionsLoading } = useSessions(selectedProjectId);
+
+  const sessions = useMemo(() => {
+    if (!hideCleanedUp) return rawSessions;
+    return rawSessions.filter(s => s.hasTranscript);
+  }, [rawSessions, hideCleanedUp]);
 
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
     setSelectedSession(prev =>
@@ -22,43 +34,12 @@ function App() {
     );
   }, []);
 
-  // Load sessions for all projects on mount
+  // Clear selection when switching projects
   useEffect(() => {
-    projects.forEach(async (project) => {
-      try {
-        const res = await fetch(`${API_BASE}/api/projects/${project.id}/sessions`);
-        if (res.ok) {
-          const sessions: Session[] = await res.json();
-          setSessionsByProject(prev => ({ ...prev, [project.id]: sessions }));
-        }
-      } catch {
-        // ignore
-      }
-    });
-  }, [projects]);
+    setSelectedSession(null);
+  }, [selectedProjectId]);
 
-  // Filter projects based on dropdown
-  const filteredProjects = useMemo(() => {
-    if (selectedProjectId === '__all__') return projects;
-    return projects.filter(p => p.id === selectedProjectId);
-  }, [projects, selectedProjectId]);
-
-  const filteredSessions = useMemo(() => {
-    const source = selectedProjectId === '__all__'
-      ? sessionsByProject
-      : { [selectedProjectId]: sessionsByProject[selectedProjectId] || [] };
-    if (!hideCleanedUp) return source;
-    const out: Record<string, Session[]> = {};
-    for (const [pid, sessions] of Object.entries(source)) {
-      const filtered = sessions.filter(s => s.hasTranscript);
-      if (filtered.length > 0) out[pid] = filtered;
-    }
-    return out;
-  }, [sessionsByProject, selectedProjectId, hideCleanedUp]);
-
-  const totalSessions = Object.values(sessionsByProject).reduce((n, s) => n + s.length, 0);
-
-  if (loading) {
+  if (loading || (projects.length > 0 && !selectedProjectId)) {
     return (
       <div className="loading-screen">
         <div className="loading-text">Loading Claude Code state...</div>
@@ -78,6 +59,14 @@ function App() {
     );
   }
 
+  if (projects.length === 0) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-text">No Claude Code projects found.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <div className="topbar">
@@ -85,16 +74,14 @@ function App() {
 
         <select
           className="project-select"
-          value={selectedProjectId}
+          value={selectedProjectId || ''}
           onChange={e => setSelectedProjectId(e.target.value)}
         >
-          <option value="__all__">All projects ({projects.length})</option>
           {projects.map(p => {
             const name = p.path.split('\\').pop() || p.id;
-            const count = sessionsByProject[p.id]?.length || 0;
             return (
               <option key={p.id} value={p.id}>
-                {name} ({count} sessions)
+                {name} ({p.sessionCount} sessions)
               </option>
             );
           })}
@@ -110,19 +97,21 @@ function App() {
         </label>
 
         <span className="topbar-info">
-          {totalSessions} sessions &middot; {skills.length} skills
+          {sessions.length} sessions{sessionsLoading ? ' ...' : ''}
         </span>
       </div>
+
+      <ProjectContextBar skills={skills} config={config} />
+
       <div className={`canvas-container${selectedSession ? ' pane-open' : ''}`}>
         <Canvas
-          projects={filteredProjects}
-          sessionsByProject={filteredSessions}
-          skills={skills}
-          config={config}
+          sessions={sessions}
+          projectId={selectedProjectId!}
           onSelectSession={handleSelectSession}
           selectedSessionId={selectedSession?.session.sessionId ?? null}
         />
       </div>
+
       {selectedSession && (
         <DetailPane
           session={selectedSession.session}
