@@ -1014,10 +1014,39 @@ html, body, #root {
   tab-size: 2;
 }
 
-.file-viewer-error {
-  padding: 16px;
-  color: var(--red);
-  font-size: 12px;
+.file-viewer-not-found {
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.file-viewer-not-found-icon {
+  font-size: 28px;
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+.file-viewer-not-found-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.file-viewer-not-found-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.file-viewer-not-found-path {
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.6;
+  word-break: break-all;
 }
 
 .file-viewer-binary {

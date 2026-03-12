@@ -42,7 +42,17 @@ export function FileViewerPane({ projectId, filePath, onClose }: Props) {
 
       <div className="file-viewer-content">
         {loading && <div className="loading">Loading file...</div>}
-        {error && <div className="file-viewer-error">{error}</div>}
+        {error && (
+          <div className="file-viewer-not-found">
+            <div className="file-viewer-not-found-icon">?</div>
+            <div className="file-viewer-not-found-title">File not found</div>
+            <div className="file-viewer-not-found-detail">
+              This file was referenced in a session but no longer exists on disk.
+              It may have been renamed, deleted, or was a failed tool target.
+            </div>
+            <div className="file-viewer-not-found-path">{filePath}</div>
+          </div>
+        )}
         {file?.isBinary && (
           <div className="file-viewer-binary">Binary file ({formatSize(file.size)})</div>
         )}
