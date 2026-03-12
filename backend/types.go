@@ -25,9 +25,18 @@ type Session struct {
 	IsSidechain    bool     `json:"isSidechain"`
 	HasTranscript  bool     `json:"hasTranscript"`
 	IsActive       bool     `json:"isActive"`
-	LastToolUse    string   `json:"lastToolUse,omitempty"`
-	LastToolTarget string   `json:"lastToolTarget,omitempty"`
-	FilesTouched   []string `json:"filesTouched,omitempty"`
+	LastToolUse    string    `json:"lastToolUse,omitempty"`
+	LastToolTarget string    `json:"lastToolTarget,omitempty"`
+	FilesTouched   []string  `json:"filesTouched,omitempty"`
+	CronJobs       []CronJob `json:"cronJobs,omitempty"`
+}
+
+// CronJob represents a scheduled job discovered from a session transcript
+type CronJob struct {
+	ID        string `json:"id"`
+	Cron      string `json:"cron"`
+	Prompt    string `json:"prompt"`
+	Recurring bool   `json:"recurring"`
 }
 
 // SessionsIndex is the top-level structure of sessions-index.json

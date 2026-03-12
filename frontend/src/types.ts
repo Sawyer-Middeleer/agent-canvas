@@ -22,6 +22,14 @@ export interface Session {
   lastToolUse?: string;
   lastToolTarget?: string;
   filesTouched?: string[];
+  cronJobs?: CronJob[];
+}
+
+export interface CronJob {
+  id: string;
+  cron: string;
+  prompt: string;
+  recurring: boolean;
 }
 
 export interface TranscriptMessage {

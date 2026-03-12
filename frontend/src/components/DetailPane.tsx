@@ -165,6 +165,18 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
               ))}
             </div>
           )}
+          {session.cronJobs && session.cronJobs.length > 0 && (
+            <div className="detail-cron-jobs">
+              <span className="detail-files-label">Scheduled jobs:</span>
+              {session.cronJobs.map(job => (
+                <div key={job.id} className="detail-cron-item">
+                  <span className="cron-expr">{job.cron}</span>
+                  {job.recurring && <span className="badge cron">recurring</span>}
+                  <span className="cron-prompt">{job.prompt.length > 80 ? job.prompt.slice(0, 80) + '...' : job.prompt}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="detail-transcript" ref={transcriptRef}>

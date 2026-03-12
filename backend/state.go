@@ -341,6 +341,7 @@ func enrichActiveSession(s *Session, projectDir string) {
 	if s.IsActive {
 		// Active sessions always get fresh data
 		tailSessionActivity(s, jsonlPath, info.Size())
+		s.CronJobs = extractCronJobs(jsonlPath)
 		// Update cache
 		fileTouchCacheMu.Lock()
 		fileTouchCache[s.SessionID] = fileTouchEntry{
@@ -471,6 +472,133 @@ func tailSessionActivity(s *Session, path string, size int64) {
 		s.FilesTouched = append(s.FilesTouched, f)
 	}
 	sort.Strings(s.FilesTouched)
+}
+
+// extractCronJobs scans a session JSONL for CronCreate/CronDelete tool_use
+// blocks and returns the net list of active cron jobs.
+func extractCronJobs(jsonlPath string) []CronJob {
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
+
+	type toolBlock struct {
+		Type  string                 `json:"type"`
+		Name  string                 `json:"name,omitempty"`
+		Input map[string]interface{} `json:"input,omitempty"`
+	}
+
+	jobs := map[string]CronJob{} // id -> job
+	// Track CronCreate tool_use IDs to match with results for job ID
+	pendingCreates := map[string]CronJob{} // tool_use id -> partial job
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var peek struct {
+			Type    string `json:"type"`
+			Message *struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(line, &peek) != nil || peek.Message == nil {
+			continue
+		}
+
+		if peek.Type == "assistant" {
+			var blocks []toolBlock
+			if json.Unmarshal(peek.Message.Content, &blocks) != nil {
+				continue
+			}
+			for _, b := range blocks {
+				if b.Type != "tool_use" {
+					continue
+				}
+				switch b.Name {
+				case "CronCreate":
+					job := CronJob{}
+					if v, ok := b.Input["cron"].(string); ok {
+						job.Cron = v
+					}
+					if v, ok := b.Input["prompt"].(string); ok {
+						job.Prompt = v
+					}
+					if v, ok := b.Input["recurring"].(bool); ok {
+						job.Recurring = v
+					}
+					// Use tool_use id temporarily; replace with real ID from result
+					if id, ok := b.Input["id"].(string); ok && id != "" {
+						job.ID = id
+						jobs[job.ID] = job
+					} else {
+						// Look for the tool_use block's id field
+						var full struct {
+							Type  string                 `json:"type"`
+							ID    string                 `json:"id"`
+							Name  string                 `json:"name"`
+							Input map[string]interface{} `json:"input"`
+						}
+						// Re-parse to get tool_use block ID for result matching
+						raw, _ := json.Marshal(b)
+						json.Unmarshal(raw, &full)
+						if full.ID != "" {
+							pendingCreates[full.ID] = job
+						}
+					}
+				case "CronDelete":
+					if id, ok := b.Input["id"].(string); ok {
+						delete(jobs, id)
+					}
+				}
+			}
+		}
+
+		// Check for tool results that resolve pending CronCreate IDs
+		if peek.Type == "result" || (peek.Type == "user" && peek.Message.Role == "user") {
+			var contentBlocks []struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+			}
+			if json.Unmarshal(peek.Message.Content, &contentBlocks) == nil {
+				for _, cb := range contentBlocks {
+					if cb.Type == "tool_result" && cb.ToolUseID != "" {
+						if job, ok := pendingCreates[cb.ToolUseID]; ok {
+							// Try to extract job ID from result content
+							var result struct {
+								ID string `json:"id"`
+							}
+							if json.Unmarshal([]byte(cb.Content), &result) == nil && result.ID != "" {
+								job.ID = result.ID
+							} else {
+								job.ID = cb.ToolUseID // fallback
+							}
+							jobs[job.ID] = job
+							delete(pendingCreates, cb.ToolUseID)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	if len(jobs) == 0 {
+		return nil
+	}
+	result := make([]CronJob, 0, len(jobs))
+	for _, j := range jobs {
+		result = append(result, j)
+	}
+	return result
 }
 
 // splitLines splits a byte slice on newlines without allocating strings.

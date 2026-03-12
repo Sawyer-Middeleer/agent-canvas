@@ -40,6 +40,9 @@ export function SessionCard({ session, selected, onClick }: Props) {
         </div>
         <div className="session-meta">
           {session.isActive && <span className="badge live">LIVE</span>}
+          {session.cronJobs && session.cronJobs.length > 0 && (
+            <span className="badge cron">{session.cronJobs.length} job{session.cronJobs.length > 1 ? 's' : ''}</span>
+          )}
           <span className="badge">{session.gitBranch}</span>
           <span className="badge">{session.messageCount} msgs</span>
           <span className="session-date">{formatDate(session.modified)}</span>

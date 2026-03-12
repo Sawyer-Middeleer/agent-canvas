@@ -477,6 +477,12 @@ html, body, #root {
   letter-spacing: 0.5px;
 }
 
+.badge.cron {
+  color: var(--orange);
+  border-color: rgba(251, 146, 60, 0.3);
+  background: rgba(251, 146, 60, 0.06);
+}
+
 .badge.trigger { color: var(--green); border-color: rgba(74, 222, 128, 0.3); }
 .badge.tool { color: var(--accent); border-color: rgba(108, 99, 255, 0.3); }
 .badge.type { color: var(--orange); border-color: rgba(251, 146, 60, 0.3); }
@@ -619,6 +625,33 @@ html, body, #root {
   letter-spacing: 0.5px;
   color: var(--text-dim);
   margin-right: 2px;
+}
+
+.detail-cron-jobs {
+  margin-top: 8px;
+}
+
+.detail-cron-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.cron-expr {
+  font-weight: 600;
+  color: var(--orange);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.cron-prompt {
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detail-transcript {
