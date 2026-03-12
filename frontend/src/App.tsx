@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Canvas } from './Canvas';
 import { DetailPane } from './components/DetailPane';
+import { ChatPane } from './components/ChatPane';
+import type { ChatSession } from './components/ChatPane';
 import { ProjectContextBar } from './components/ProjectContextBar';
-import { useProjects, useSessions, useSkills, useConfig } from './hooks/useAPI';
+import { FileTreeSidebar } from './components/FileTreeSidebar';
+import { useProjects, useSessions, useSkills, useConfig, useFileTree } from './hooks/useAPI';
 import type { Session } from './types';
 import './App.css';
 
@@ -10,17 +13,36 @@ function App() {
   const { projects, loading, error } = useProjects();
   const skills = useSkills();
   const config = useConfig();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
+    return localStorage.getItem('selectedProjectId');
+  });
   const [selectedSession, setSelectedSession] = useState<{ session: Session; projectId: string } | null>(null);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
+  });
 
-  // Auto-select first project once loaded
   useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id);
-    }
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Auto-select first project once loaded, or validate stored selection
+  useEffect(() => {
+    if (projects.length === 0) return;
+    if (selectedProjectId && projects.some(p => p.id === selectedProjectId)) return;
+    setSelectedProjectId(projects[0].id);
   }, [projects, selectedProjectId]);
 
+  // Persist selected project to localStorage
+  useEffect(() => {
+    if (selectedProjectId) {
+      localStorage.setItem('selectedProjectId', selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const { tree: fileTree, loading: fileTreeLoading } = useFileTree(selectedProjectId);
   const { sessions: rawSessions, loading: sessionsLoading } = useSessions(selectedProjectId);
 
   const sessions = useMemo(() => {
@@ -29,15 +51,29 @@ function App() {
   }, [rawSessions, hideCleanedUp]);
 
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
+    setChatSession(null); // close chat when opening detail
     setSelectedSession(prev =>
       prev?.session.sessionId === session.sessionId ? null : { session, projectId }
     );
   }, []);
 
+  const handleNewSession = useCallback(() => {
+    if (!selectedProjectId) return;
+    setSelectedSession(null); // close detail when opening chat
+    setChatSession({
+      sessionId: crypto.randomUUID(),
+      projectId: selectedProjectId,
+      isNew: true,
+    });
+  }, [selectedProjectId]);
+
   // Clear selection when switching projects
   useEffect(() => {
     setSelectedSession(null);
+    setChatSession(null);
   }, [selectedProjectId]);
+
+  const paneOpen = !!(selectedSession || chatSession);
 
   if (loading || (projects.length > 0 && !selectedProjectId)) {
     return (
@@ -96,6 +132,18 @@ function App() {
           <span>With transcript only</span>
         </label>
 
+        <button className="new-session-btn" onClick={handleNewSession}>
+          + New Session
+        </button>
+
+        <button
+          className="theme-toggle"
+          onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === 'dark' ? '\u2600' : '\u263D'}
+        </button>
+
         <span className="topbar-info">
           {sessions.length} sessions{sessionsLoading ? ' ...' : ''}
         </span>
@@ -103,13 +151,17 @@ function App() {
 
       <ProjectContextBar skills={skills} config={config} />
 
-      <div className={`canvas-container${selectedSession ? ' pane-open' : ''}`}>
-        <Canvas
-          sessions={sessions}
-          projectId={selectedProjectId!}
-          onSelectSession={handleSelectSession}
-          selectedSessionId={selectedSession?.session.sessionId ?? null}
-        />
+      <div className="main-area">
+        <FileTreeSidebar tree={fileTree} loading={fileTreeLoading} />
+
+        <div className={`canvas-container${paneOpen ? ' pane-open' : ''}`}>
+          <Canvas
+            sessions={sessions}
+            projectId={selectedProjectId!}
+            onSelectSession={handleSelectSession}
+            selectedSessionId={selectedSession?.session.sessionId ?? null}
+          />
+        </div>
       </div>
 
       {selectedSession && (
@@ -117,6 +169,13 @@ function App() {
           session={selectedSession.session}
           projectId={selectedSession.projectId}
           onClose={() => setSelectedSession(null)}
+        />
+      )}
+
+      {chatSession && (
+        <ChatPane
+          session={chatSession}
+          onClose={() => setChatSession(null)}
         />
       )}
     </div>

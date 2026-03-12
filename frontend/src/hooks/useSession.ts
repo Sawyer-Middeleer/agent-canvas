@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 interface StreamEvent {
   type: string;
+  source?: string;
   [key: string]: unknown;
 }
 
@@ -40,19 +41,22 @@ export function useSessionWS(projectId: string, sessionId: string) {
     };
   }, [projectId, sessionId]);
 
-  const send = useCallback((prompt: string) => {
+  const send = useCallback((prompt: string, action?: string) => {
+    const payload: Record<string, string> = { type: 'prompt', prompt };
+    if (action) payload.action = action;
+
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       connect();
       // Queue the send after connection
       const checkAndSend = setInterval(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'prompt', prompt }));
+          wsRef.current.send(JSON.stringify(payload));
           clearInterval(checkAndSend);
         }
       }, 100);
       setTimeout(() => clearInterval(checkAndSend), 5000);
     } else {
-      wsRef.current.send(JSON.stringify({ type: 'prompt', prompt }));
+      wsRef.current.send(JSON.stringify(payload));
     }
   }, [connect]);
 

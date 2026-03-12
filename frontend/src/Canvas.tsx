@@ -84,7 +84,7 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
     >
       <ZoomControls />
       <TransformComponent
-        wrapperStyle={{ width: '100%', height: '100%' }}
+        wrapperStyle={{ width: '100%', height: '100%', background: 'transparent' }}
         contentStyle={{ width: maxX + 400, height: maxY + 400 }}
       >
         <div

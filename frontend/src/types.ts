@@ -18,6 +18,10 @@ export interface Session {
   projectPath: string;
   isSidechain: boolean;
   hasTranscript: boolean;
+  isActive: boolean;
+  lastToolUse?: string;
+  lastToolTarget?: string;
+  filesTouched?: string[];
 }
 
 export interface TranscriptMessage {
@@ -83,6 +87,13 @@ export interface Config {
   skills: Skill[];
   settings: Record<string, unknown>;
   permissions: Record<string, unknown>;
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileNode[];
 }
 
 export interface CanvasNode {

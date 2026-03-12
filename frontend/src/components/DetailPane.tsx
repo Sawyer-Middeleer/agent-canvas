@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import type { Session, TranscriptMessage, ContentBlock } from '../types';
+import { useState, useEffect, useRef } from 'react';
+import type { Session, TranscriptMessage } from '../types';
 import { fetchTranscript } from '../hooks/useAPI';
+import { renderMessage } from './MessageRenderer';
 
 interface Props {
   session: Session;
@@ -19,94 +20,10 @@ function formatDate(iso: string): string {
   }
 }
 
-function CollapsibleBlock({ label, children, dimmed }: { label: string; children: React.ReactNode; dimmed?: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={`collapsible-block ${dimmed ? 'dimmed' : ''}`}>
-      <div className="collapsible-header" onClick={() => setOpen(!open)}>
-        <span className="collapsible-arrow">{open ? '\u25BC' : '\u25B6'}</span>
-        <span>{label}</span>
-      </div>
-      {open && <div className="collapsible-body">{children}</div>}
-    </div>
-  );
-}
-
-function TruncatedText({ text, limit = 500 }: { text: string; limit?: number }) {
-  const [expanded, setExpanded] = useState(false);
-  if (text.length <= limit) return <span>{text}</span>;
-  return (
-    <span>
-      {expanded ? text : text.slice(0, limit) + '...'}
-      <button className="expand-btn" onClick={() => setExpanded(!expanded)}>
-        {expanded ? 'less' : 'more'}
-      </button>
-    </span>
-  );
-}
-
-function renderBlock(block: ContentBlock, idx: number) {
-  switch (block.type) {
-    case 'text':
-      return (
-        <div key={idx} className="msg-block text">
-          <pre className="msg-pre">{block.text}</pre>
-        </div>
-      );
-    case 'thinking':
-      return (
-        <CollapsibleBlock key={idx} label="Thinking" dimmed>
-          <pre className="msg-pre">{block.thinking}</pre>
-        </CollapsibleBlock>
-      );
-    case 'tool_use':
-      return (
-        <div key={idx} className="msg-block tool-use">
-          <span className="badge tool">{block.name}</span>
-          <CollapsibleBlock label="Input">
-            <pre className="msg-pre">{JSON.stringify(block.input, null, 2)}</pre>
-          </CollapsibleBlock>
-        </div>
-      );
-    case 'tool_result': {
-      const text = typeof block.content === 'string'
-        ? block.content
-        : Array.isArray(block.content)
-          ? block.content.filter(b => b.type === 'text').map(b => b.text || '').join('\n')
-          : '';
-      return (
-        <CollapsibleBlock key={idx} label="Tool Result">
-          <pre className="msg-pre"><TruncatedText text={text} /></pre>
-        </CollapsibleBlock>
-      );
-    }
-    default:
-      return null;
-  }
-}
-
-function renderMessage(msg: TranscriptMessage, idx: number) {
-  const role = msg.message?.role;
-  const content = msg.message?.content;
-  if (!content) return null;
-
-  const blocks = typeof content === 'string'
-    ? [{ type: 'text', text: content } as ContentBlock]
-    : content;
-
-  return (
-    <div key={msg.uuid || idx} className={`detail-msg ${role || msg.type}`}>
-      <div className="detail-msg-role">{role === 'user' ? '>' : 'claude'}</div>
-      <div className="detail-msg-content">
-        {blocks.map((block, bi) => renderBlock(block, bi))}
-      </div>
-    </div>
-  );
-}
-
 export function DetailPane({ session, projectId, onClose }: Props) {
   const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!session.hasTranscript) {
@@ -122,6 +39,26 @@ export function DetailPane({ session, projectId, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [projectId, session.sessionId, session.hasTranscript]);
 
+  // Auto-scroll to bottom when transcript loads or updates
+  useEffect(() => {
+    if (transcript && transcriptRef.current) {
+      requestAnimationFrame(() => {
+        transcriptRef.current!.scrollTop = transcriptRef.current!.scrollHeight;
+      });
+    }
+  }, [transcript]);
+
+  // Poll for updates if session is active
+  useEffect(() => {
+    if (!session.isActive || !session.hasTranscript) return;
+    const interval = setInterval(() => {
+      fetchTranscript(projectId, session.sessionId)
+        .then(msgs => setTranscript(msgs))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [session.isActive, session.hasTranscript, projectId, session.sessionId]);
+
   return (
     <>
       <div className="detail-backdrop" onClick={onClose} />
@@ -129,8 +66,12 @@ export function DetailPane({ session, projectId, onClose }: Props) {
         <button className="detail-close" onClick={onClose}>&times;</button>
 
         <div className="detail-header">
-          <div className="detail-summary">{session.summary || 'Untitled'}</div>
+          <div className="detail-summary">
+            {session.isActive && <span className="active-dot" />}
+            {session.summary || 'Untitled'}
+          </div>
           <div className="detail-meta">
+            {session.isActive && <span className="badge live">LIVE</span>}
             <span className="badge">{session.gitBranch}</span>
             <span className="badge">{session.messageCount} msgs</span>
           </div>
@@ -139,9 +80,17 @@ export function DetailPane({ session, projectId, onClose }: Props) {
             <span>Created: {formatDate(session.created)}</span>
             <span>Modified: {formatDate(session.modified)}</span>
           </div>
+          {session.isActive && session.filesTouched && session.filesTouched.length > 0 && (
+            <div className="detail-files-touched">
+              <span className="detail-files-label">Files touched:</span>
+              {session.filesTouched.map(f => (
+                <span key={f} className="file-pill">{f}</span>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="detail-transcript">
+        <div className="detail-transcript" ref={transcriptRef}>
           {loading && <div className="loading">Loading transcript...</div>}
           {transcript?.map((msg, i) => renderMessage(msg, i))}
           {transcript?.length === 0 && !loading && (

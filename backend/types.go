@@ -13,17 +13,21 @@ type Project struct {
 
 // Session from sessions-index.json
 type Session struct {
-	SessionID      string `json:"sessionId"`
-	FullPath       string `json:"fullPath"`
-	FirstPrompt    string `json:"firstPrompt"`
-	Summary        string `json:"summary"`
-	MessageCount   int    `json:"messageCount"`
-	Created        string `json:"created"`
-	Modified       string `json:"modified"`
-	GitBranch      string `json:"gitBranch"`
-	ProjectPath    string `json:"projectPath"`
-	IsSidechain    bool   `json:"isSidechain"`
-	HasTranscript  bool   `json:"hasTranscript"`
+	SessionID      string   `json:"sessionId"`
+	FullPath       string   `json:"fullPath"`
+	FirstPrompt    string   `json:"firstPrompt"`
+	Summary        string   `json:"summary"`
+	MessageCount   int      `json:"messageCount"`
+	Created        string   `json:"created"`
+	Modified       string   `json:"modified"`
+	GitBranch      string   `json:"gitBranch"`
+	ProjectPath    string   `json:"projectPath"`
+	IsSidechain    bool     `json:"isSidechain"`
+	HasTranscript  bool     `json:"hasTranscript"`
+	IsActive       bool     `json:"isActive"`
+	LastToolUse    string   `json:"lastToolUse,omitempty"`
+	LastToolTarget string   `json:"lastToolTarget,omitempty"`
+	FilesTouched   []string `json:"filesTouched,omitempty"`
 }
 
 // SessionsIndex is the top-level structure of sessions-index.json
@@ -87,6 +91,14 @@ type PluginInstall struct {
 	InstallPath string `json:"installPath"`
 	Version     string `json:"version"`
 	InstalledAt string `json:"installedAt"`
+}
+
+// FileNode represents a file or directory in the project tree
+type FileNode struct {
+	Name     string     `json:"name"`
+	Path     string     `json:"path"`
+	IsDir    bool       `json:"isDir"`
+	Children []FileNode `json:"children,omitempty"`
 }
 
 // Config is the aggregated configuration view

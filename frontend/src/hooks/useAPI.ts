@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Project, Session, TranscriptMessage, Skill, Config } from '../types';
+import type { Project, Session, TranscriptMessage, Skill, Config, FileNode } from '../types';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3333' : '';
 
@@ -43,6 +43,14 @@ export function useSessions(projectId: string | null) {
       .then(data => setSessions(data || []))
       .catch(() => setSessions([]))
       .finally(() => setLoading(false));
+
+    // Poll every 10s to keep active session indicators fresh
+    const interval = setInterval(() => {
+      fetchJSON<Session[]>(`/api/projects/${projectId}/sessions`)
+        .then(data => setSessions(data || []))
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
   }, [projectId]);
 
   return { sessions, loading };
@@ -59,6 +67,22 @@ export function useSkills() {
     fetchJSON<Skill[]>('/api/skills').then(setSkills).catch(() => {});
   }, []);
   return skills;
+}
+
+export function useFileTree(projectId: string | null) {
+  const [tree, setTree] = useState<FileNode | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) { setTree(null); return; }
+    setLoading(true);
+    fetchJSON<FileNode>(`/api/projects/${projectId}/filetree`)
+      .then(setTree)
+      .catch(() => setTree(null))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  return { tree, loading };
 }
 
 export function useConfig() {
