@@ -488,6 +488,7 @@ func extractCronJobs(jsonlPath string) []CronJob {
 
 	type toolBlock struct {
 		Type  string                 `json:"type"`
+		ID    string                 `json:"id,omitempty"`
 		Name  string                 `json:"name,omitempty"`
 		Input map[string]interface{} `json:"input,omitempty"`
 	}
@@ -534,24 +535,9 @@ func extractCronJobs(jsonlPath string) []CronJob {
 					if v, ok := b.Input["recurring"].(bool); ok {
 						job.Recurring = v
 					}
-					// Use tool_use id temporarily; replace with real ID from result
-					if id, ok := b.Input["id"].(string); ok && id != "" {
-						job.ID = id
-						jobs[job.ID] = job
-					} else {
-						// Look for the tool_use block's id field
-						var full struct {
-							Type  string                 `json:"type"`
-							ID    string                 `json:"id"`
-							Name  string                 `json:"name"`
-							Input map[string]interface{} `json:"input"`
-						}
-						// Re-parse to get tool_use block ID for result matching
-						raw, _ := json.Marshal(b)
-						json.Unmarshal(raw, &full)
-						if full.ID != "" {
-							pendingCreates[full.ID] = job
-						}
+					// Store with tool_use block ID; will resolve real job ID from result
+					if b.ID != "" {
+						pendingCreates[b.ID] = job
 					}
 				case "CronDelete":
 					if id, ok := b.Input["id"].(string); ok {
@@ -572,15 +558,18 @@ func extractCronJobs(jsonlPath string) []CronJob {
 				for _, cb := range contentBlocks {
 					if cb.Type == "tool_result" && cb.ToolUseID != "" {
 						if job, ok := pendingCreates[cb.ToolUseID]; ok {
-							// Try to extract job ID from result content
-							var result struct {
-								ID string `json:"id"`
+							// Result is plain text like "Scheduled recurring job f1a986ca ..."
+							// Extract the hex job ID after "job "
+							jobID := cb.ToolUseID // fallback
+							if idx := strings.Index(cb.Content, "job "); idx >= 0 {
+								rest := cb.Content[idx+4:]
+								if sp := strings.IndexAny(rest, " (.\n"); sp > 0 {
+									jobID = rest[:sp]
+								} else if len(rest) > 0 {
+									jobID = rest
+								}
 							}
-							if json.Unmarshal([]byte(cb.Content), &result) == nil && result.ID != "" {
-								job.ID = result.ID
-							} else {
-								job.ID = cb.ToolUseID // fallback
-							}
+							job.ID = jobID
 							jobs[job.ID] = job
 							delete(pendingCreates, cb.ToolUseID)
 						}
