@@ -280,6 +280,18 @@ func ReadSessions(projectID string) ([]Session, error) {
 		}
 	}
 
+	// Filter out archived sessions
+	archived := loadArchived()
+	if len(archived) > 0 {
+		filtered := sessions[:0]
+		for _, s := range sessions {
+			if !archived[s.SessionID] {
+				filtered = append(filtered, s)
+			}
+		}
+		sessions = filtered
+	}
+
 	if len(sessions) == 0 {
 		return nil, fmt.Errorf("no sessions found")
 	}
@@ -912,4 +924,50 @@ func parseHooks(raw interface{}) []Hook {
 		}
 	}
 	return hooks
+}
+
+// --- Archive ---
+
+func archivePath() string {
+	return filepath.Join(claudeDir(), "agent-canvas-archived.json")
+}
+
+func loadArchived() map[string]bool {
+	data, err := os.ReadFile(archivePath())
+	if err != nil {
+		return map[string]bool{}
+	}
+	var ids []string
+	if json.Unmarshal(data, &ids) != nil {
+		return map[string]bool{}
+	}
+	m := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		m[id] = true
+	}
+	return m
+}
+
+func saveArchived(m map[string]bool) error {
+	ids := make([]string, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(archivePath(), data, 0644)
+}
+
+// ArchiveSession adds a session ID to the archive list.
+func ArchiveSession(sessionID string) error {
+	m := loadArchived()
+	m[sessionID] = true
+	return saveArchived(m)
+}
+
+// IsArchived checks if a session is archived.
+func IsArchived(sessionID string) bool {
+	return loadArchived()[sessionID]
 }

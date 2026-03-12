@@ -36,6 +36,13 @@ export function useSessions(projectId: string | null) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const refresh = useCallback(() => {
+    if (!projectId) return;
+    fetchJSON<Session[]>(`/api/projects/${projectId}/sessions`)
+      .then(data => setSessions(data || []))
+      .catch(() => setSessions([]));
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId) { setSessions([]); return; }
     setLoading(true);
@@ -53,12 +60,17 @@ export function useSessions(projectId: string | null) {
     return () => clearInterval(interval);
   }, [projectId]);
 
-  return { sessions, loading };
+  return { sessions, loading, refresh };
 }
 
 export async function fetchTranscript(projectId: string, sessionId: string, limit?: number): Promise<TranscriptMessage[]> {
   const params = limit ? `?limit=${limit}` : '';
   return fetchJSON<TranscriptMessage[]>(`/api/sessions/${projectId}/${sessionId}/transcript${params}`);
+}
+
+export async function archiveSession(projectId: string, sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions/${projectId}/${sessionId}/archive`, { method: 'POST' });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
 }
 
 export function useSkills() {

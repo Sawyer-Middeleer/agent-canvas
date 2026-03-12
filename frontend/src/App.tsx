@@ -5,7 +5,7 @@ import { ChatPane } from './components/ChatPane';
 import type { ChatSession } from './components/ChatPane';
 import { ProjectContextBar } from './components/ProjectContextBar';
 import { FileTreeSidebar } from './components/FileTreeSidebar';
-import { useProjects, useSessions, useSkills, useConfig, useFileTree } from './hooks/useAPI';
+import { useProjects, useSessions, useSkills, useConfig, useFileTree, archiveSession } from './hooks/useAPI';
 import type { Session } from './types';
 import './App.css';
 
@@ -43,7 +43,7 @@ function App() {
   }, [selectedProjectId]);
 
   const { tree: fileTree, loading: fileTreeLoading } = useFileTree(selectedProjectId);
-  const { sessions: rawSessions, loading: sessionsLoading } = useSessions(selectedProjectId);
+  const { sessions: rawSessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions(selectedProjectId);
 
   const sessions = useMemo(() => {
     if (!hideCleanedUp) return rawSessions;
@@ -83,6 +83,14 @@ function App() {
       isNew: true,
     });
   }, [selectedProjectId]);
+
+  const handleArchiveSession = useCallback((sessionId: string) => {
+    if (!selectedProjectId) return;
+    archiveSession(selectedProjectId, sessionId).then(() => {
+      if (selectedSession?.session.sessionId === sessionId) setSelectedSession(null);
+      refreshSessions();
+    }).catch(() => {});
+  }, [selectedProjectId, selectedSession, refreshSessions]);
 
   // Clear selection when switching projects
   useEffect(() => {
@@ -187,6 +195,7 @@ function App() {
               session={selectedSession.session}
               projectId={selectedSession.projectId}
               onClose={() => setSelectedSession(null)}
+              onArchive={() => handleArchiveSession(selectedSession.session.sessionId)}
             />
           ) : chatSession ? (
             <ChatPane

@@ -96,10 +96,9 @@ func handleSessionWS(ws *websocket.Conn) {
 						break
 					}
 				}
+				// ProjectPath may be empty in the index; fall back to resolving from JSONL
 				if projectPath == "" {
-					websocket.JSON.Send(ws, map[string]string{"error": "session not found"})
-					cmdMu.Unlock()
-					return
+					projectPath = resolveProjectPath(projectID)
 				}
 			} else {
 				// Subsequent prompt — always resume

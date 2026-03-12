@@ -10,6 +10,7 @@ func setupAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", handleProjects)
 	mux.HandleFunc("GET /api/projects/{id}/sessions", handleSessions)
 	mux.HandleFunc("GET /api/sessions/{projectID}/{sessionID}/transcript", handleTranscript)
+	mux.HandleFunc("POST /api/sessions/{projectID}/{sessionID}/archive", handleArchiveSession)
 	mux.HandleFunc("GET /api/projects/{id}/filetree", handleFileTree)
 	mux.HandleFunc("GET /api/skills", handleSkills)
 	mux.HandleFunc("GET /api/config", handleConfig)
@@ -99,6 +100,28 @@ func handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, messages)
+}
+
+func handleArchiveSession(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("projectID")
+	sessionID := r.PathValue("sessionID")
+	if projectID == "" || sessionID == "" {
+		writeError(w, 400, "projectID and sessionID required")
+		return
+	}
+	for _, id := range []string{projectID, sessionID} {
+		for _, c := range id {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+				writeError(w, 400, "invalid id")
+				return
+			}
+		}
+	}
+	if err := ArchiveSession(sessionID); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]string{"status": "archived"})
 }
 
 func handleFileTree(w http.ResponseWriter, r *http.Request) {

@@ -8,6 +8,7 @@ interface Props {
   session: Session;
   projectId: string;
   onClose: () => void;
+  onArchive?: () => void;
 }
 
 function formatDate(iso: string): string {
@@ -21,7 +22,7 @@ function formatDate(iso: string): string {
   }
 }
 
-export function DetailPane({ session, projectId, onClose }: Props) {
+export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
   const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
   const [loading, setLoading] = useState(true);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -134,7 +135,12 @@ export function DetailPane({ session, projectId, onClose }: Props) {
 
   return (
       <div className="detail-pane">
-        <button className="detail-close" onClick={onClose}>&times;</button>
+        <div className="detail-actions">
+          {onArchive && (
+            <button className="archive-btn-detail" title="Archive session" onClick={onArchive}>Archive</button>
+          )}
+          <button className="detail-close" onClick={onClose}>&times;</button>
+        </div>
 
         <div className="detail-header">
           <div className="detail-summary">
