@@ -5,6 +5,7 @@ import { ChatPane } from './components/ChatPane';
 import type { ChatSession } from './components/ChatPane';
 import { ProjectContextBar } from './components/ProjectContextBar';
 import { FileTreeSidebar } from './components/FileTreeSidebar';
+import { FileViewerPane } from './components/FileViewerPane';
 import { useProjects, useSessions, useSkills, useConfig, useFileTree, archiveSession } from './hooks/useAPI';
 import type { Session } from './types';
 import './App.css';
@@ -18,6 +19,7 @@ function App() {
   });
   const [selectedSession, setSelectedSession] = useState<{ session: Session; projectId: string } | null>(null);
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
@@ -69,9 +71,16 @@ function App() {
 
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
     setChatSession(null); // close chat when opening detail
+    setSelectedFile(null); // close file viewer when opening detail
     setSelectedSession(prev =>
       prev?.session.sessionId === session.sessionId ? null : { session, projectId }
     );
+  }, []);
+
+  const handleSelectFile = useCallback((relPath: string) => {
+    setSelectedSession(null);
+    setChatSession(null);
+    setSelectedFile(prev => prev === relPath ? null : relPath);
   }, []);
 
   const handleNewSession = useCallback(() => {
@@ -96,6 +105,7 @@ function App() {
   useEffect(() => {
     setSelectedSession(null);
     setChatSession(null);
+    setSelectedFile(null);
   }, [selectedProjectId]);
 
   if (loading || (projects.length > 0 && !selectedProjectId)) {
@@ -175,7 +185,7 @@ function App() {
       <ProjectContextBar skills={skills} config={config} />
 
       <div className="main-area">
-        <FileTreeSidebar tree={fileTree} loading={fileTreeLoading} />
+        <FileTreeSidebar tree={fileTree} loading={fileTreeLoading} onSelectFile={handleSelectFile} />
 
         <div className="canvas-container">
           <Canvas
@@ -185,12 +195,19 @@ function App() {
             onToggleOlder={() => setShowOlder(v => !v)}
             projectId={selectedProjectId!}
             onSelectSession={handleSelectSession}
+            onSelectFile={handleSelectFile}
             selectedSessionId={selectedSession?.session.sessionId ?? null}
           />
         </div>
 
         <div className="right-sidebar">
-          {selectedSession ? (
+          {selectedFile && selectedProjectId ? (
+            <FileViewerPane
+              projectId={selectedProjectId}
+              filePath={selectedFile}
+              onClose={() => setSelectedFile(null)}
+            />
+          ) : selectedSession ? (
             <DetailPane
               session={selectedSession.session}
               projectId={selectedSession.projectId}

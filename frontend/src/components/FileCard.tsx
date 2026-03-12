@@ -21,25 +21,30 @@ interface DirCardProps {
   dir: string;
   files: string[];
   highlighted?: boolean;
+  onFileClick?: (relPath: string) => void;
 }
 
-export function DirCard({ dir, files, highlighted }: DirCardProps) {
+export function DirCard({ dir, files, highlighted, onFileClick }: DirCardProps) {
   return (
     <div className={`dir-card${highlighted ? ' highlighted' : ''}`}>
       <div className="dir-card-header" title={dir}>
         {dir || '.'}
       </div>
       <div className="dir-card-files">
-        {files.map(f => (
-          <div
-            key={f}
-            className="dir-card-file"
-            style={{ borderLeftColor: getExtColor(f) }}
-            title={dir ? `${dir}/${f}` : f}
-          >
-            {f}
-          </div>
-        ))}
+        {files.map(f => {
+          const relPath = dir && dir !== '.' ? `${dir}/${f}` : f;
+          return (
+            <div
+              key={f}
+              className={`dir-card-file${onFileClick ? ' clickable' : ''}`}
+              style={{ borderLeftColor: getExtColor(f) }}
+              title={relPath}
+              onClick={onFileClick ? (e) => { e.stopPropagation(); onFileClick(relPath); } : undefined}
+            >
+              {f}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -876,6 +876,81 @@ func ReadFileTree(projectPath string, maxDepth, maxEntries int) (*FileNode, erro
 	return walk(projectPath, 1)
 }
 
+// ReadFileContent reads a file from the project directory and returns its content.
+// It guards against path traversal by ensuring the resolved path is within the project root.
+func ReadFileContent(projectRoot, relPath string) (*FileContent, error) {
+	absPath := filepath.Join(projectRoot, filepath.FromSlash(relPath))
+	absPath, err := filepath.Abs(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolving path: %w", err)
+	}
+
+	cleanRoot, _ := filepath.Abs(projectRoot)
+	if !strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(cleanRoot)+string(filepath.Separator)) &&
+		!strings.EqualFold(absPath, cleanRoot) {
+		return nil, fmt.Errorf("path outside project: %s", relPath)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %s", relPath)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("path is a directory: %s", relPath)
+	}
+
+	const maxSize = 1 * 1024 * 1024 // 1MB
+	fc := &FileContent{
+		Path: relPath,
+		Name: filepath.Base(absPath),
+		Size: info.Size(),
+	}
+
+	// Detect language from extension
+	ext := strings.TrimPrefix(filepath.Ext(absPath), ".")
+	langMap := map[string]string{
+		"go": "go", "ts": "typescript", "tsx": "tsx", "js": "javascript",
+		"jsx": "jsx", "py": "python", "rs": "rust", "css": "css",
+		"html": "html", "json": "json", "md": "markdown", "yaml": "yaml",
+		"yml": "yaml", "toml": "toml", "sh": "bash", "bash": "bash",
+		"sql": "sql", "graphql": "graphql", "proto": "protobuf",
+		"java": "java", "kt": "kotlin", "rb": "ruby", "c": "c",
+		"cpp": "cpp", "h": "c", "hpp": "cpp", "swift": "swift",
+	}
+	fc.Language = langMap[strings.ToLower(ext)]
+
+	if info.Size() > maxSize {
+		f, err := os.Open(absPath)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		buf := make([]byte, maxSize)
+		n, _ := f.Read(buf)
+		fc.Content = string(buf[:n])
+		fc.Truncated = true
+	} else {
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return nil, err
+		}
+		// Check if binary (contains null bytes in first 8KB)
+		check := data
+		if len(check) > 8192 {
+			check = check[:8192]
+		}
+		for _, b := range check {
+			if b == 0 {
+				fc.IsBinary = true
+				fc.Content = ""
+				return fc, nil
+			}
+		}
+		fc.Content = string(data)
+	}
+	return fc, nil
+}
+
 // parseHooks converts the raw hooks map into typed Hook structs
 func parseHooks(raw interface{}) []Hook {
 	hooksMap, ok := raw.(map[string]interface{})

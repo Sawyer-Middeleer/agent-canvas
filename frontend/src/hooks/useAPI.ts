@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Project, Session, TranscriptMessage, Skill, Config, FileNode } from '../types';
+import type { Project, Session, TranscriptMessage, Skill, Config, FileNode, FileContent } from '../types';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3333' : '';
 
@@ -95,6 +95,10 @@ export function useFileTree(projectId: string | null) {
   }, [projectId]);
 
   return { tree, loading };
+}
+
+export async function fetchFileContent(projectId: string, relPath: string): Promise<FileContent> {
+  return fetchJSON<FileContent>(`/api/projects/${projectId}/file?path=${encodeURIComponent(relPath)}`);
 }
 
 export function useConfig() {

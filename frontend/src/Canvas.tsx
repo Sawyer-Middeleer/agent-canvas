@@ -11,6 +11,7 @@ interface Props {
   onToggleOlder?: () => void;
   projectId: string;
   onSelectSession?: (session: Session, projectId: string) => void;
+  onSelectFile?: (relPath: string) => void;
   selectedSessionId?: string | null;
 }
 
@@ -150,7 +151,7 @@ function buildGraph(recent: Session[], older: Session[], showOlder: boolean) {
   return { sessionNodes, dirNodes, edges };
 }
 
-function CanvasInner({ sessions, olderSessions = [], showOlder = false, onToggleOlder, projectId, onSelectSession, selectedSessionId }: Props) {
+function CanvasInner({ sessions, olderSessions = [], showOlder = false, onToggleOlder, projectId, onSelectSession, onSelectFile, selectedSessionId }: Props) {
   const { sessionNodes, dirNodes, edges } = useMemo(
     () => buildGraph(sessions, olderSessions, showOlder),
     [sessions, olderSessions, showOlder],
@@ -348,6 +349,7 @@ function CanvasInner({ sessions, olderSessions = [], showOlder = false, onToggle
                   dir={node.dir}
                   files={node.files}
                   highlighted={highlightedDirs.has(node.id)}
+                  onFileClick={onSelectFile}
                 />
               </div>
             );

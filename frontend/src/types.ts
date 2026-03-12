@@ -96,6 +96,16 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface FileContent {
+  path: string;
+  name: string;
+  content: string;
+  language: string;
+  size: number;
+  isBinary: boolean;
+  truncated: boolean;
+}
+
 export interface CanvasNode {
   id: string;
   type: 'project' | 'session' | 'skill' | 'config';

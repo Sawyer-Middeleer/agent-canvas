@@ -12,6 +12,7 @@ func setupAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sessions/{projectID}/{sessionID}/transcript", handleTranscript)
 	mux.HandleFunc("POST /api/sessions/{projectID}/{sessionID}/archive", handleArchiveSession)
 	mux.HandleFunc("GET /api/projects/{id}/filetree", handleFileTree)
+	mux.HandleFunc("GET /api/projects/{id}/file", handleFileContent)
 	mux.HandleFunc("GET /api/skills", handleSkills)
 	mux.HandleFunc("GET /api/config", handleConfig)
 }
@@ -143,6 +144,36 @@ func handleFileTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, tree)
+}
+
+func handleFileContent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, 400, "project id required")
+		return
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			writeError(w, 400, "invalid project id")
+			return
+		}
+	}
+	relPath := r.URL.Query().Get("path")
+	if relPath == "" {
+		writeError(w, 400, "path query parameter required")
+		return
+	}
+	projectPath := resolveProjectPath(id)
+	fc, err := ReadFileContent(projectPath, relPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "outside project") {
+			writeError(w, 403, err.Error())
+		} else {
+			writeError(w, 404, err.Error())
+		}
+		return
+	}
+	writeJSON(w, fc)
 }
 
 func handleSkills(w http.ResponseWriter, r *http.Request) {

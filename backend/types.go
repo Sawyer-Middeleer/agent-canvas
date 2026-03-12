@@ -101,6 +101,17 @@ type FileNode struct {
 	Children []FileNode `json:"children,omitempty"`
 }
 
+// FileContent is returned by the file-read endpoint
+type FileContent struct {
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	Content  string `json:"content"`
+	Language string `json:"language"`
+	Size     int64  `json:"size"`
+	IsBinary bool   `json:"isBinary"`
+	Truncated bool  `json:"truncated"`
+}
+
 // Config is the aggregated configuration view
 type Config struct {
 	Hooks       []Hook            `json:"hooks"`
