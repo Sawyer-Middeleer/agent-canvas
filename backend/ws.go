@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/net/websocket"
 )
@@ -38,8 +39,12 @@ func handleSessionWS(ws *websocket.Conn) {
 
 	var cmd *exec.Cmd
 	var cmdMu sync.Mutex
-	// Track whether the session has been created on disk yet (first prompt done)
-	sessionStarted := false
+	// Generation counter: incremented each time a new process is spawned.
+	// Goroutines from old processes check this before sending "done".
+	var generation atomic.Int64
+
+	// Resolved project path — set once on first prompt, reused for all subsequent prompts.
+	var resolvedPath string
 
 	for {
 		var msg struct {
@@ -66,23 +71,22 @@ func handleSessionWS(ws *websocket.Conn) {
 			cmd = nil
 		}
 
-		// Resolve project path and build CLI args
-		var projectPath string
+		// Build CLI args
 		var args []string
 
-		if !sessionStarted && msg.Action == "create" {
+		if resolvedPath == "" && msg.Action == "create" {
 			// New session: resolve project path from the encoded project ID
-			projectPath = resolveProjectPath(projectID)
+			resolvedPath = resolveProjectPath(projectID)
 			args = []string{
 				"--session-id", sessionID,
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
 				"--verbose",
 			}
-			log.Printf("WS: creating new session %s in %s", sessionID, projectPath)
+			log.Printf("WS: creating new session %s in %s", sessionID, resolvedPath)
 		} else {
-			// Resume existing session: look up path from sessions index
-			if !sessionStarted {
+			// Resume existing session
+			if resolvedPath == "" {
 				// First prompt but not "create" — find session in index
 				sessions, err := ReadSessions(projectID)
 				if err != nil {
@@ -92,17 +96,14 @@ func handleSessionWS(ws *websocket.Conn) {
 				}
 				for _, s := range sessions {
 					if s.SessionID == sessionID {
-						projectPath = s.ProjectPath
+						resolvedPath = s.ProjectPath
 						break
 					}
 				}
 				// ProjectPath may be empty in the index; fall back to resolving from JSONL
-				if projectPath == "" {
-					projectPath = resolveProjectPath(projectID)
+				if resolvedPath == "" {
+					resolvedPath = resolveProjectPath(projectID)
 				}
-			} else {
-				// Subsequent prompt — always resume
-				projectPath = resolveProjectPath(projectID)
 			}
 
 			args = []string{
@@ -111,11 +112,11 @@ func handleSessionWS(ws *websocket.Conn) {
 				"--output-format", "stream-json",
 				"--verbose",
 			}
-			log.Printf("WS: resuming session %s in %s", sessionID, projectPath)
+			log.Printf("WS: resuming session %s in %s", sessionID, resolvedPath)
 		}
 
-		err := startAndStream(ctx, ws, &cmd, projectPath, args)
-		sessionStarted = true
+		gen := generation.Add(1)
+		err := startAndStream(ctx, ws, &cmd, resolvedPath, args, &generation, gen)
 		cmdMu.Unlock()
 
 		if err != nil {
@@ -134,7 +135,8 @@ func handleSessionWS(ws *websocket.Conn) {
 
 // startAndStream spawns a claude CLI process and streams its stdout to the WebSocket.
 // The caller must hold cmdMu. The cmd pointer is updated and cleared when the process exits.
-func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir string, args []string) error {
+// generation/myGen ensure that only the latest process sends "done" status.
+func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir string, args []string, generation *atomic.Int64, myGen int64) error {
 	c := exec.CommandContext(ctx, "claude", args...)
 	c.Dir = dir
 	*cmd = c
@@ -167,6 +169,10 @@ func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 		for scanner.Scan() {
+			// Stop streaming if a newer process has taken over
+			if generation.Load() != myGen {
+				break
+			}
 			line := scanner.Text()
 			var event map[string]interface{}
 			if json.Unmarshal([]byte(line), &event) == nil {
@@ -175,7 +181,10 @@ func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir
 			}
 		}
 		c.Wait()
-		websocket.JSON.Send(ws, map[string]string{"type": "status", "status": "done"})
+		// Only send "done" if we're still the active generation
+		if generation.Load() == myGen {
+			websocket.JSON.Send(ws, map[string]string{"type": "status", "status": "done"})
+		}
 	}()
 
 	return nil

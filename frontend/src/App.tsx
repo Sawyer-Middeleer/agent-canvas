@@ -209,6 +209,7 @@ function App() {
             />
           ) : selectedSession ? (
             <DetailPane
+              key={selectedSession.session.sessionId}
               session={selectedSession.session}
               projectId={selectedSession.projectId}
               onClose={() => setSelectedSession(null)}
@@ -216,6 +217,7 @@ function App() {
             />
           ) : chatSession ? (
             <ChatPane
+              key={chatSession.sessionId}
               session={chatSession}
               onClose={() => setChatSession(null)}
             />
