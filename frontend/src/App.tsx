@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Canvas } from './Canvas';
 import { DetailPane } from './components/DetailPane';
+import { ChatPane } from './components/ChatPane';
+import type { ChatSession } from './components/ChatPane';
 import { ProjectContextBar } from './components/ProjectContextBar';
 import { useProjects, useSessions, useSkills, useConfig } from './hooks/useAPI';
 import type { Session } from './types';
@@ -12,7 +14,16 @@ function App() {
   const config = useConfig();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<{ session: Session; projectId: string } | null>(null);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Auto-select first project once loaded
   useEffect(() => {
@@ -29,14 +40,26 @@ function App() {
   }, [rawSessions, hideCleanedUp]);
 
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
+    setChatSession(null); // close chat when opening detail
     setSelectedSession(prev =>
       prev?.session.sessionId === session.sessionId ? null : { session, projectId }
     );
   }, []);
 
+  const handleNewSession = useCallback(() => {
+    if (!selectedProjectId) return;
+    setSelectedSession(null); // close detail when opening chat
+    setChatSession({
+      sessionId: crypto.randomUUID(),
+      projectId: selectedProjectId,
+      isNew: true,
+    });
+  }, [selectedProjectId]);
+
   // Clear selection when switching projects
   useEffect(() => {
     setSelectedSession(null);
+    setChatSession(null);
   }, [selectedProjectId]);
 
   if (loading || (projects.length > 0 && !selectedProjectId)) {
@@ -96,6 +119,18 @@ function App() {
           <span>With transcript only</span>
         </label>
 
+        <button className="new-session-btn" onClick={handleNewSession}>
+          + New Session
+        </button>
+
+        <button
+          className="theme-toggle"
+          onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === 'dark' ? '\u2600' : '\u263D'}
+        </button>
+
         <span className="topbar-info">
           {sessions.length} sessions{sessionsLoading ? ' ...' : ''}
         </span>
@@ -103,22 +138,35 @@ function App() {
 
       <ProjectContextBar skills={skills} config={config} />
 
-      <div className={`canvas-container${selectedSession ? ' pane-open' : ''}`}>
-        <Canvas
-          sessions={sessions}
-          projectId={selectedProjectId!}
-          onSelectSession={handleSelectSession}
-          selectedSessionId={selectedSession?.session.sessionId ?? null}
-        />
-      </div>
+      <div className="main-area">
+        <div className="canvas-container">
+          <Canvas
+            sessions={sessions}
+            projectId={selectedProjectId!}
+            onSelectSession={handleSelectSession}
+            selectedSessionId={selectedSession?.session.sessionId ?? null}
+          />
+        </div>
 
-      {selectedSession && (
-        <DetailPane
-          session={selectedSession.session}
-          projectId={selectedSession.projectId}
-          onClose={() => setSelectedSession(null)}
-        />
-      )}
+        <div className="right-sidebar">
+          {selectedSession ? (
+            <DetailPane
+              session={selectedSession.session}
+              projectId={selectedSession.projectId}
+              onClose={() => setSelectedSession(null)}
+            />
+          ) : chatSession ? (
+            <ChatPane
+              session={chatSession}
+              onClose={() => setChatSession(null)}
+            />
+          ) : (
+            <div className="right-sidebar-empty">
+              <div className="right-sidebar-empty-text">Select a session to view details</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

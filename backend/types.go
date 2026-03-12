@@ -13,17 +13,19 @@ type Project struct {
 
 // Session from sessions-index.json
 type Session struct {
-	SessionID      string `json:"sessionId"`
-	FullPath       string `json:"fullPath"`
-	FirstPrompt    string `json:"firstPrompt"`
-	Summary        string `json:"summary"`
-	MessageCount   int    `json:"messageCount"`
-	Created        string `json:"created"`
-	Modified       string `json:"modified"`
-	GitBranch      string `json:"gitBranch"`
-	ProjectPath    string `json:"projectPath"`
-	IsSidechain    bool   `json:"isSidechain"`
-	HasTranscript  bool   `json:"hasTranscript"`
+	SessionID      string   `json:"sessionId"`
+	FullPath       string   `json:"fullPath"`
+	FirstPrompt    string   `json:"firstPrompt"`
+	Summary        string   `json:"summary"`
+	MessageCount   int      `json:"messageCount"`
+	Created        string   `json:"created"`
+	Modified       string   `json:"modified"`
+	GitBranch      string   `json:"gitBranch"`
+	ProjectPath    string   `json:"projectPath"`
+	IsSidechain    bool     `json:"isSidechain"`
+	HasTranscript  bool     `json:"hasTranscript"`
+	IsActive       bool     `json:"isActive"`
+	FilesTouched   []string `json:"filesTouched,omitempty"`
 }
 
 // SessionsIndex is the top-level structure of sessions-index.json

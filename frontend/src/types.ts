@@ -18,6 +18,8 @@ export interface Session {
   projectPath: string;
   isSidechain: boolean;
   hasTranscript: boolean;
+  isActive: boolean;
+  filesTouched?: string[];
 }
 
 export interface TranscriptMessage {

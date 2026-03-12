@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // claudeDir returns the path to ~/.claude
@@ -27,6 +28,45 @@ func decodeProjectPath(encoded string) string {
 	// Replace remaining "--" with "\" (path separator), then single "-" with "\"
 	// Actually the encoding is simple: every "-" is a path separator
 	return strings.ReplaceAll(encoded, "-", "\\")
+}
+
+// resolveProjectPath tries to find the real project path by peeking at JSONL files.
+// The folder encoding is lossy, so we read the cwd from the first JSONL transcript.
+func resolveProjectPath(projectID string) string {
+	projectDir := filepath.Join(claudeDir(), "projects", projectID)
+	entries, err := os.ReadDir(projectDir)
+	if err != nil {
+		return decodeProjectPath(projectID)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".jsonl") {
+			if cwd := peekCWD(filepath.Join(projectDir, e.Name())); cwd != "" {
+				return cwd
+			}
+		}
+	}
+	return decodeProjectPath(projectID)
+}
+
+// peekCWD reads the first line of a JSONL file looking for the system init cwd.
+func peekCWD(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	if scanner.Scan() {
+		var peek struct {
+			Type string `json:"type"`
+			CWD  string `json:"cwd"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &peek) == nil && peek.Type == "system" && peek.CWD != "" {
+			return peek.CWD
+		}
+	}
+	return ""
 }
 
 // ReadProjects lists all projects from ~/.claude/projects/
@@ -130,10 +170,142 @@ func ReadSessions(projectID string) ([]Session, error) {
 		}
 	}
 
+	// Enrich all sessions with filesTouched
+	for i := range sessions {
+		enrichSessionFiles(&sessions[i], projectDir)
+	}
+
 	if len(sessions) == 0 {
 		return nil, fmt.Errorf("no sessions found")
 	}
 	return sessions, nil
+}
+
+// --- filesTouched cache ---
+var (
+	fileTouchCache   = map[string]fileTouchEntry{}
+	fileTouchCacheMu sync.Mutex
+)
+
+type fileTouchEntry struct {
+	modTime      os.FileInfo
+	filesTouched []string
+}
+
+// enrichSessionFiles scans the JSONL for tool_use file paths and populates FilesTouched.
+func enrichSessionFiles(s *Session, projectDir string) {
+	if !s.HasTranscript {
+		return
+	}
+
+	jsonlPath := filepath.Join(projectDir, s.SessionID+".jsonl")
+	if s.FullPath != "" {
+		normalized := filepath.FromSlash(strings.ReplaceAll(s.FullPath, "\\", "/"))
+		if _, err := os.Stat(normalized); err == nil {
+			jsonlPath = normalized
+		}
+	}
+
+	info, err := os.Stat(jsonlPath)
+	if err != nil {
+		return
+	}
+
+	fileTouchCacheMu.Lock()
+	if cached, ok := fileTouchCache[s.SessionID]; ok && cached.modTime != nil &&
+		cached.modTime.ModTime().Equal(info.ModTime()) && cached.modTime.Size() == info.Size() {
+		s.FilesTouched = cached.filesTouched
+		fileTouchCacheMu.Unlock()
+		return
+	}
+	fileTouchCacheMu.Unlock()
+
+	touched := tailSessionActivity(jsonlPath, s.ProjectPath)
+	s.FilesTouched = touched
+
+	fileTouchCacheMu.Lock()
+	fileTouchCache[s.SessionID] = fileTouchEntry{modTime: info, filesTouched: touched}
+	fileTouchCacheMu.Unlock()
+}
+
+// tailSessionActivity scans a JSONL file for tool_use blocks that reference file paths.
+func tailSessionActivity(jsonlPath, projectRoot string) []string {
+	if projectRoot == "" {
+		projectRoot = peekCWD(jsonlPath)
+	}
+
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	filesTouched := map[string]bool{}
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		// Quick check — only parse lines that might have tool_use
+		if !strings.Contains(string(line), "tool_use") {
+			continue
+		}
+
+		var entry struct {
+			Type    string `json:"type"`
+			Message *struct {
+				Content []struct {
+					Type  string                 `json:"type"`
+					Name  string                 `json:"name"`
+					Input map[string]interface{} `json:"input"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(line, &entry) != nil || entry.Message == nil {
+			continue
+		}
+		for _, block := range entry.Message.Content {
+			if block.Type != "tool_use" {
+				continue
+			}
+			// Extract file paths from common tool inputs
+			for _, key := range []string{"file_path", "path", "command"} {
+				raw, ok := block.Input[key]
+				if !ok {
+					continue
+				}
+				fp, ok := raw.(string)
+				if !ok || fp == "" {
+					continue
+				}
+				// For "command" key, try to extract file paths from the command string
+				if key == "command" {
+					continue // skip command strings, too noisy
+				}
+				// Make path relative to project root
+				display := fp
+				if projectRoot != "" {
+					if rel, err := filepath.Rel(projectRoot, fp); err == nil {
+						display = filepath.ToSlash(rel)
+					}
+				}
+				// Skip paths that go outside the project
+				if strings.HasPrefix(display, "..") {
+					continue
+				}
+				filesTouched[display] = true
+			}
+		}
+	}
+
+	result := make([]string, 0, len(filesTouched))
+	for f := range filesTouched {
+		result = append(result, f)
+	}
+	return result
 }
 
 // fillSessionMetadata reads the JSONL file to extract metadata

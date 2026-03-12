@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { SessionCard } from './components/SessionCard';
 import type { Session } from './types';
 
@@ -23,18 +23,7 @@ function layoutSessions(sessions: Session[]) {
   }));
 }
 
-function ZoomControls() {
-  const { zoomIn, zoomOut, resetTransform } = useControls();
-  return (
-    <div className="zoom-controls">
-      <button onClick={() => zoomIn()} title="Zoom in">+</button>
-      <button onClick={() => zoomOut()} title="Zoom out">&minus;</button>
-      <button onClick={() => resetTransform()} title="Reset view">fit</button>
-    </div>
-  );
-}
-
-export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId }: Props) {
+function CanvasInner({ sessions, projectId, onSelectSession, selectedSessionId }: Props) {
   const nodes = layoutSessions(sessions);
   const [dragging, setDragging] = useState<string | null>(null);
   const [offsets, setOffsets] = useState<Record<string, { x: number; y: number }>>({});
@@ -73,16 +62,6 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
   }, []);
 
   return (
-    <TransformWrapper
-      limitToBounds={false}
-      minScale={0.1}
-      maxScale={3}
-      initialScale={0.85}
-      initialPositionX={0}
-      initialPositionY={0}
-      panning={{ velocityDisabled: true }}
-    >
-      <ZoomControls />
       <TransformComponent
         wrapperStyle={{ width: '100%', height: '100%' }}
         contentStyle={{ width: maxX + 400, height: maxY + 400 }}
@@ -117,6 +96,21 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
           )}
         </div>
       </TransformComponent>
+  );
+}
+
+export function Canvas(props: Props) {
+  return (
+    <TransformWrapper
+      limitToBounds={false}
+      minScale={0.1}
+      maxScale={3}
+      initialScale={0.85}
+      initialPositionX={0}
+      initialPositionY={0}
+      panning={{ velocityDisabled: true }}
+    >
+      <CanvasInner {...props} />
     </TransformWrapper>
   );
 }
