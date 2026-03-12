@@ -8,8 +8,20 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
+
+// fileTouchCache caches filesTouched per session to avoid re-scanning JSONL on every poll.
+var (
+	fileTouchCache   = map[string]fileTouchEntry{}
+	fileTouchCacheMu sync.Mutex
+)
+
+type fileTouchEntry struct {
+	modTime      time.Time
+	filesTouched []string
+}
 
 // claudeDir returns the path to ~/.claude
 func claudeDir() string {
@@ -304,17 +316,43 @@ func enrichActiveSession(s *Session, projectDir string) {
 		}
 	}
 
-	if !s.IsActive {
-		return
-	}
-
-	// Tail-scan the JSONL for activity details
+	// Tail-scan the JSONL for filesTouched (cached for inactive sessions)
 	jsonlPath := filepath.Join(projectDir, s.SessionID+".jsonl")
 	if _, err := os.Stat(jsonlPath); os.IsNotExist(err) && s.FullPath != "" {
 		jsonlPath = filepath.FromSlash(strings.ReplaceAll(s.FullPath, "\\", "/"))
 	}
-	if info, err := os.Stat(jsonlPath); err == nil {
+	info, err := os.Stat(jsonlPath)
+	if err != nil {
+		return
+	}
+
+	if s.IsActive {
+		// Active sessions always get fresh data
 		tailSessionActivity(s, jsonlPath, info.Size())
+		// Update cache
+		fileTouchCacheMu.Lock()
+		fileTouchCache[s.SessionID] = fileTouchEntry{
+			modTime:      info.ModTime(),
+			filesTouched: s.FilesTouched,
+		}
+		fileTouchCacheMu.Unlock()
+	} else {
+		// Inactive sessions use cache; only re-scan if modtime changed
+		fileTouchCacheMu.Lock()
+		cached, ok := fileTouchCache[s.SessionID]
+		fileTouchCacheMu.Unlock()
+
+		if ok && cached.modTime.Equal(info.ModTime()) {
+			s.FilesTouched = cached.filesTouched
+		} else {
+			tailSessionActivity(s, jsonlPath, info.Size())
+			fileTouchCacheMu.Lock()
+			fileTouchCache[s.SessionID] = fileTouchEntry{
+				modTime:      info.ModTime(),
+				filesTouched: s.FilesTouched,
+			}
+			fileTouchCacheMu.Unlock()
+		}
 	}
 }
 
@@ -338,6 +376,12 @@ func tailSessionActivity(s *Session, path string, size int64) {
 
 	// Split into lines, process from end
 	lines := splitLines(buf)
+
+	// Get project root for making paths relative
+	projectRoot := s.ProjectPath
+	if projectRoot == "" {
+		projectRoot = peekCWD(path)
+	}
 
 	type toolBlock struct {
 		Type  string                 `json:"type"`
@@ -378,11 +422,16 @@ func tailSessionActivity(s *Session, path string, size int64) {
 
 			// Extract file path from tool input
 			if fp, ok := b.Input["file_path"].(string); ok {
-				short := filepath.Base(fp)
-				filesTouched[short] = true
+				display := fp
+				if projectRoot != "" {
+					if rel, err := filepath.Rel(projectRoot, fp); err == nil {
+						display = filepath.ToSlash(rel)
+					}
+				}
+				filesTouched[display] = true
 				if !foundLast {
 					s.LastToolUse = b.Name
-					s.LastToolTarget = short
+					s.LastToolTarget = filepath.Base(fp)
 					foundLast = true
 				}
 			} else if !foundLast {
