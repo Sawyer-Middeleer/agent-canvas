@@ -10,6 +10,7 @@ func setupAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", handleProjects)
 	mux.HandleFunc("GET /api/projects/{id}/sessions", handleSessions)
 	mux.HandleFunc("GET /api/sessions/{projectID}/{sessionID}/transcript", handleTranscript)
+	mux.HandleFunc("GET /api/projects/{id}/filetree", handleFileTree)
 	mux.HandleFunc("GET /api/skills", handleSkills)
 	mux.HandleFunc("GET /api/config", handleConfig)
 }
@@ -98,6 +99,27 @@ func handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, messages)
+}
+
+func handleFileTree(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, 400, "project id required")
+		return
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			writeError(w, 400, "invalid project id")
+			return
+		}
+	}
+	projectPath := resolveProjectPath(id)
+	tree, err := ReadFileTree(projectPath, 4, 500)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, tree)
 }
 
 func handleSkills(w http.ResponseWriter, r *http.Request) {

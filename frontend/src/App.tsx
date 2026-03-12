@@ -4,7 +4,8 @@ import { DetailPane } from './components/DetailPane';
 import { ChatPane } from './components/ChatPane';
 import type { ChatSession } from './components/ChatPane';
 import { ProjectContextBar } from './components/ProjectContextBar';
-import { useProjects, useSessions, useSkills, useConfig } from './hooks/useAPI';
+import { FileTreeSidebar } from './components/FileTreeSidebar';
+import { useProjects, useSessions, useSkills, useConfig, useFileTree } from './hooks/useAPI';
 import type { Session } from './types';
 import './App.css';
 
@@ -12,7 +13,9 @@ function App() {
   const { projects, loading, error } = useProjects();
   const skills = useSkills();
   const config = useConfig();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
+    return localStorage.getItem('selectedProjectId');
+  });
   const [selectedSession, setSelectedSession] = useState<{ session: Session; projectId: string } | null>(null);
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
@@ -25,19 +28,44 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Auto-select first project once loaded
+  // Auto-select first project once loaded, or validate stored selection
   useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id);
-    }
+    if (projects.length === 0) return;
+    if (selectedProjectId && projects.some(p => p.id === selectedProjectId)) return;
+    setSelectedProjectId(projects[0].id);
   }, [projects, selectedProjectId]);
 
+  // Persist selected project to localStorage
+  useEffect(() => {
+    if (selectedProjectId) {
+      localStorage.setItem('selectedProjectId', selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const { tree: fileTree, loading: fileTreeLoading } = useFileTree(selectedProjectId);
   const { sessions: rawSessions, loading: sessionsLoading } = useSessions(selectedProjectId);
 
   const sessions = useMemo(() => {
     if (!hideCleanedUp) return rawSessions;
     return rawSessions.filter(s => s.hasTranscript);
   }, [rawSessions, hideCleanedUp]);
+
+  const [showOlder, setShowOlder] = useState(false);
+
+  const { recentSessions, olderSessions } = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recent: Session[] = [];
+    const older: Session[] = [];
+    for (const s of sessions) {
+      const t = new Date(s.modified).getTime();
+      if (t >= cutoff || s.isActive) {
+        recent.push(s);
+      } else {
+        older.push(s);
+      }
+    }
+    return { recentSessions: recent, olderSessions: older };
+  }, [sessions]);
 
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
     setChatSession(null); // close chat when opening detail
@@ -132,16 +160,21 @@ function App() {
         </button>
 
         <span className="topbar-info">
-          {sessions.length} sessions{sessionsLoading ? ' ...' : ''}
+          {recentSessions.length} recent{olderSessions.length > 0 ? ` + ${olderSessions.length} older` : ''}{sessionsLoading ? ' ...' : ''}
         </span>
       </div>
 
       <ProjectContextBar skills={skills} config={config} />
 
       <div className="main-area">
+        <FileTreeSidebar tree={fileTree} loading={fileTreeLoading} />
+
         <div className="canvas-container">
           <Canvas
-            sessions={sessions}
+            sessions={recentSessions}
+            olderSessions={olderSessions}
+            showOlder={showOlder}
+            onToggleOlder={() => setShowOlder(v => !v)}
             projectId={selectedProjectId!}
             onSelectSession={handleSelectSession}
             selectedSessionId={selectedSession?.session.sessionId ?? null}

@@ -19,6 +19,8 @@ export interface Session {
   isSidechain: boolean;
   hasTranscript: boolean;
   isActive: boolean;
+  lastToolUse?: string;
+  lastToolTarget?: string;
   filesTouched?: string[];
 }
 
@@ -85,6 +87,13 @@ export interface Config {
   skills: Skill[];
   settings: Record<string, unknown>;
   permissions: Record<string, unknown>;
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileNode[];
 }
 
 export interface CanvasNode {
