@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import type { Session, TranscriptMessage } from '../types';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { Session, TranscriptMessage, ContentBlock } from '../types';
 import { fetchTranscript } from '../hooks/useAPI';
+import { useSessionWS } from '../hooks/useSession';
 import { renderMessage } from './MessageRenderer';
 
 interface Props {
@@ -24,7 +25,14 @@ export function DetailPane({ session, projectId, onClose }: Props) {
   const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
   const [loading, setLoading] = useState(true);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [input, setInput] = useState('');
 
+  // WS hook for resuming the session
+  const { events, status, send } = useSessionWS(projectId, session.sessionId);
+  const [userPrompts, setUserPrompts] = useState<string[]>([]);
+
+  // Fetch existing transcript
   useEffect(() => {
     if (!session.hasTranscript) {
       setTranscript([]);
@@ -39,25 +47,90 @@ export function DetailPane({ session, projectId, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [projectId, session.sessionId, session.hasTranscript]);
 
-  // Auto-scroll to bottom when transcript loads or updates
+  // Convert WS streaming events into TranscriptMessages (same as ChatPane)
+  const streamMessages = useMemo(() => {
+    const msgs: TranscriptMessage[] = [];
+    let promptIdx = 0;
+
+    for (const evt of events) {
+      if (evt.type === 'assistant' && evt.message) {
+        if (promptIdx < userPrompts.length && (msgs.length === 0 || msgs[msgs.length - 1]?.message?.role !== 'user')) {
+          msgs.push({
+            type: 'user',
+            uuid: `ws-user-${promptIdx}`,
+            parentUuid: null,
+            timestamp: new Date().toISOString(),
+            message: { role: 'user', content: userPrompts[promptIdx] },
+          });
+          promptIdx++;
+        }
+
+        const m = evt.message as { role: string; content: ContentBlock[] };
+        msgs.push({
+          type: 'assistant',
+          uuid: `ws-assistant-${msgs.length}`,
+          parentUuid: null,
+          timestamp: new Date().toISOString(),
+          message: { role: m.role, content: m.content },
+        });
+      }
+    }
+
+    while (promptIdx < userPrompts.length) {
+      msgs.push({
+        type: 'user',
+        uuid: `ws-user-${promptIdx}`,
+        parentUuid: null,
+        timestamp: new Date().toISOString(),
+        message: { role: 'user', content: userPrompts[promptIdx] },
+      });
+      promptIdx++;
+    }
+
+    return msgs;
+  }, [events, userPrompts]);
+
+  // Combined: existing transcript + new streamed messages
+  const allMessages = useMemo(() => {
+    const existing = transcript || [];
+    return [...existing, ...streamMessages];
+  }, [transcript, streamMessages]);
+
+  // Auto-scroll to bottom
   useEffect(() => {
-    if (transcript && transcriptRef.current) {
+    if (transcriptRef.current) {
       requestAnimationFrame(() => {
         transcriptRef.current!.scrollTop = transcriptRef.current!.scrollHeight;
       });
     }
-  }, [transcript]);
+  }, [allMessages]);
 
-  // Poll for updates if session is active
+  // Poll for updates if session is active (and we haven't started our own WS session)
   useEffect(() => {
-    if (!session.isActive || !session.hasTranscript) return;
+    if (!session.isActive || !session.hasTranscript || events.length > 0) return;
     const interval = setInterval(() => {
       fetchTranscript(projectId, session.sessionId)
         .then(msgs => setTranscript(msgs))
         .catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
-  }, [session.isActive, session.hasTranscript, projectId, session.sessionId]);
+  }, [session.isActive, session.hasTranscript, projectId, session.sessionId, events.length]);
+
+  const handleSend = useCallback(() => {
+    const text = input.trim();
+    if (!text || status === 'running') return;
+
+    setUserPrompts(prev => [...prev, text]);
+    setInput('');
+    send(text); // always resume for existing sessions
+  }, [input, status, send]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
   return (
     <>
@@ -92,14 +165,42 @@ export function DetailPane({ session, projectId, onClose }: Props) {
 
         <div className="detail-transcript" ref={transcriptRef}>
           {loading && <div className="loading">Loading transcript...</div>}
-          {transcript?.map((msg, i) => renderMessage(msg, i))}
-          {transcript?.length === 0 && !loading && (
+          {allMessages.map((msg, i) => renderMessage(msg, i))}
+          {allMessages.length === 0 && !loading && (
             <div className="empty">
               {session.hasTranscript
                 ? 'No transcript available'
                 : 'Transcript file has been cleaned up by Claude Code'}
             </div>
           )}
+          {status === 'running' && streamMessages[streamMessages.length - 1]?.message?.role !== 'assistant' && (
+            <div className="detail-msg assistant">
+              <div className="detail-msg-role">claude</div>
+              <div className="detail-msg-content">
+                <div className="chat-typing">thinking...</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="chat-input-bar">
+          <textarea
+            ref={textareaRef}
+            className="chat-input"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Resume session..."
+            rows={2}
+            disabled={status === 'running'}
+          />
+          <button
+            className="chat-send"
+            onClick={handleSend}
+            disabled={status === 'running' || !input.trim()}
+          >
+            Send
+          </button>
         </div>
       </div>
     </>

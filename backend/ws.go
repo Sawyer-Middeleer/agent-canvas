@@ -72,11 +72,12 @@ func handleSessionWS(ws *websocket.Conn) {
 
 		if !sessionStarted && msg.Action == "create" {
 			// New session: resolve project path from the encoded project ID
-			projectPath = decodeProjectPath(projectID)
+			projectPath = resolveProjectPath(projectID)
 			args = []string{
 				"--session-id", sessionID,
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
+				"--verbose",
 			}
 			log.Printf("WS: creating new session %s in %s", sessionID, projectPath)
 		} else {
@@ -101,14 +102,15 @@ func handleSessionWS(ws *websocket.Conn) {
 					return
 				}
 			} else {
-				// Subsequent prompt — always resume, reuse decoded path
-				projectPath = decodeProjectPath(projectID)
+				// Subsequent prompt — always resume
+				projectPath = resolveProjectPath(projectID)
 			}
 
 			args = []string{
 				"--resume", sessionID,
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
+				"--verbose",
 			}
 			log.Printf("WS: resuming session %s in %s", sessionID, projectPath)
 		}
@@ -142,6 +144,10 @@ func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %v", err)
 	}
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe: %v", err)
+	}
 
 	if err := c.Start(); err != nil {
 		return fmt.Errorf("start: %v", err)
@@ -149,9 +155,18 @@ func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir
 
 	websocket.JSON.Send(ws, map[string]string{"type": "status", "status": "running"})
 
+	// Log stderr
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			log.Printf("WS stderr: %s", scanner.Text())
+		}
+	}()
+
 	go func() {
 		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+		scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			var event map[string]interface{}

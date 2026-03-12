@@ -1,10 +1,13 @@
 import { useState, useRef, useCallback } from 'react';
-import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent, useControls, useTransformContext } from 'react-zoom-pan-pinch';
 import { SessionCard } from './components/SessionCard';
 import type { Session } from './types';
 
 interface Props {
   sessions: Session[];
+  olderSessions?: Session[];
+  showOlder?: boolean;
+  onToggleOlder?: () => void;
   projectId: string;
   onSelectSession?: (session: Session, projectId: string) => void;
   selectedSessionId?: string | null;
@@ -13,14 +16,35 @@ interface Props {
 const START_X = 40;
 const START_Y = 40;
 const ROW_HEIGHT = 130;
+const OLDER_HEADER_HEIGHT = 44;
 
-function layoutSessions(sessions: Session[]) {
-  return sessions.map((session, i) => ({
-    id: `sess-${session.sessionId}`,
-    x: START_X,
-    y: START_Y + i * ROW_HEIGHT,
-    session,
-  }));
+function layoutSessions(recent: Session[], older: Session[], showOlder: boolean) {
+  const nodes: { id: string; x: number; y: number; session: Session }[] = [];
+
+  recent.forEach((session, i) => {
+    nodes.push({
+      id: `sess-${session.sessionId}`,
+      x: START_X,
+      y: START_Y + i * ROW_HEIGHT,
+      session,
+    });
+  });
+
+  // The collapsible header sits after recent sessions
+  const olderStartY = START_Y + recent.length * ROW_HEIGHT + OLDER_HEADER_HEIGHT;
+
+  if (showOlder) {
+    older.forEach((session, i) => {
+      nodes.push({
+        id: `sess-${session.sessionId}`,
+        x: START_X,
+        y: olderStartY + i * ROW_HEIGHT,
+        session,
+      });
+    });
+  }
+
+  return nodes;
 }
 
 function ZoomControls() {
@@ -34,17 +58,21 @@ function ZoomControls() {
   );
 }
 
-export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId }: Props) {
-  const nodes = layoutSessions(sessions);
+function CanvasInner({ sessions, olderSessions = [], showOlder = false, onToggleOlder, projectId, onSelectSession, selectedSessionId }: Props) {
+  const nodes = layoutSessions(sessions, olderSessions, showOlder);
   const [dragging, setDragging] = useState<string | null>(null);
   const [offsets, setOffsets] = useState<Record<string, { x: number; y: number }>>({});
   const dragStart = useRef<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null);
+  const ctx = useTransformContext();
 
   const maxX = Math.max(...nodes.map(n => (offsets[n.id]?.x ?? n.x) + 360), 800);
   const maxY = Math.max(...nodes.map(n => (offsets[n.id]?.y ?? n.y) + 200), 2000);
 
+  const olderHeaderY = START_Y + sessions.length * ROW_HEIGHT;
+
   const onPointerDown = useCallback((nodeId: string, e: React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setDragging(nodeId);
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
@@ -52,7 +80,8 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
     const currentY = offsets[nodeId]?.y ?? node.y;
     dragStart.current = { x: e.clientX, y: e.clientY, nodeX: currentX, nodeY: currentY };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [nodes, offsets]);
+    ctx.setup.disabled = true;
+  }, [nodes, offsets, ctx]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging || !dragStart.current) return;
@@ -70,18 +99,11 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
   const onPointerUp = useCallback(() => {
     setDragging(null);
     dragStart.current = null;
-  }, []);
+    ctx.setup.disabled = false;
+  }, [ctx]);
 
   return (
-    <TransformWrapper
-      limitToBounds={false}
-      minScale={0.1}
-      maxScale={3}
-      initialScale={0.85}
-      initialPositionX={0}
-      initialPositionY={0}
-      panning={{ velocityDisabled: true }}
-    >
+    <>
       <ZoomControls />
       <TransformComponent
         wrapperStyle={{ width: '100%', height: '100%', background: 'transparent' }}
@@ -112,11 +134,38 @@ export function Canvas({ sessions, projectId, onSelectSession, selectedSessionId
             );
           })}
 
-          {sessions.length === 0 && (
+          {olderSessions.length > 0 && (
+            <div
+              className="older-sessions-toggle"
+              style={{ left: START_X, top: olderHeaderY }}
+              onClick={onToggleOlder}
+            >
+              <span className="older-arrow">{showOlder ? '\u25BC' : '\u25B6'}</span>
+              <span>Older sessions ({olderSessions.length})</span>
+            </div>
+          )}
+
+          {sessions.length === 0 && olderSessions.length === 0 && (
             <div className="canvas-empty">No sessions to display</div>
           )}
         </div>
       </TransformComponent>
+    </>
+  );
+}
+
+export function Canvas(props: Props) {
+  return (
+    <TransformWrapper
+      limitToBounds={false}
+      minScale={0.1}
+      maxScale={3}
+      initialScale={0.85}
+      initialPositionX={0}
+      initialPositionY={0}
+      panning={{ velocityDisabled: true }}
+    >
+      <CanvasInner {...props} />
     </TransformWrapper>
   );
 }

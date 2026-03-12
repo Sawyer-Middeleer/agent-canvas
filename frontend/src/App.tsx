@@ -50,6 +50,23 @@ function App() {
     return rawSessions.filter(s => s.hasTranscript);
   }, [rawSessions, hideCleanedUp]);
 
+  const [showOlder, setShowOlder] = useState(false);
+
+  const { recentSessions, olderSessions } = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const recent: Session[] = [];
+    const older: Session[] = [];
+    for (const s of sessions) {
+      const t = new Date(s.modified).getTime();
+      if (t >= cutoff || s.isActive) {
+        recent.push(s);
+      } else {
+        older.push(s);
+      }
+    }
+    return { recentSessions: recent, olderSessions: older };
+  }, [sessions]);
+
   const handleSelectSession = useCallback((session: Session, projectId: string) => {
     setChatSession(null); // close chat when opening detail
     setSelectedSession(prev =>
@@ -145,7 +162,7 @@ function App() {
         </button>
 
         <span className="topbar-info">
-          {sessions.length} sessions{sessionsLoading ? ' ...' : ''}
+          {recentSessions.length} recent{olderSessions.length > 0 ? ` + ${olderSessions.length} older` : ''}{sessionsLoading ? ' ...' : ''}
         </span>
       </div>
 
@@ -156,7 +173,10 @@ function App() {
 
         <div className={`canvas-container${paneOpen ? ' pane-open' : ''}`}>
           <Canvas
-            sessions={sessions}
+            sessions={recentSessions}
+            olderSessions={olderSessions}
+            showOlder={showOlder}
+            onToggleOlder={() => setShowOlder(v => !v)}
             projectId={selectedProjectId!}
             onSelectSession={handleSelectSession}
             selectedSessionId={selectedSession?.session.sessionId ?? null}
