@@ -879,13 +879,23 @@ func ReadFileTree(projectPath string, maxDepth, maxEntries int) (*FileNode, erro
 // ReadFileContent reads a file from the project directory and returns its content.
 // It guards against path traversal by ensuring the resolved path is within the project root.
 func ReadFileContent(projectRoot, relPath string) (*FileContent, error) {
-	absPath := filepath.Join(projectRoot, filepath.FromSlash(relPath))
+	cleanRoot, _ := filepath.Abs(projectRoot)
+
+	// If the path is already absolute, make it relative to the project root
+	normalized := filepath.FromSlash(relPath)
+	if filepath.IsAbs(normalized) {
+		rel, err := filepath.Rel(cleanRoot, normalized)
+		if err == nil {
+			relPath = filepath.ToSlash(rel)
+			normalized = rel
+		}
+	}
+
+	absPath := filepath.Join(cleanRoot, normalized)
 	absPath, err := filepath.Abs(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving path: %w", err)
 	}
-
-	cleanRoot, _ := filepath.Abs(projectRoot)
 	if !strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(cleanRoot)+string(filepath.Separator)) &&
 		!strings.EqualFold(absPath, cleanRoot) {
 		return nil, fmt.Errorf("path outside project: %s", relPath)

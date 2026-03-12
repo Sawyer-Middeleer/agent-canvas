@@ -975,7 +975,8 @@ html, body, #root {
   font-family: inherit;
   font-size: 11px;
   line-height: 1.5;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
   color: var(--text);
   tab-size: 2;
 }
