@@ -174,7 +174,7 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
               ))}
             </div>
           )}
-          {session.cronJobs && session.cronJobs.length > 0 && (
+          {session.isActive && session.cronJobs && session.cronJobs.length > 0 && (
             <div className="detail-cron-jobs">
               <span className="detail-files-label">Scheduled jobs:</span>
               {session.cronJobs.map(job => (
@@ -208,25 +208,27 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
           )}
         </div>
 
-        <div className="chat-input-bar">
-          <textarea
-            ref={textareaRef}
-            className="chat-input"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Resume session..."
-            rows={2}
-            disabled={status === 'running'}
-          />
-          <button
-            className="chat-send"
-            onClick={handleSend}
-            disabled={status === 'running' || !input.trim()}
-          >
-            Send
-          </button>
-        </div>
+        {session.hasTranscript && (
+          <div className="chat-input-bar">
+            <textarea
+              ref={textareaRef}
+              className="chat-input"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Resume session..."
+              rows={2}
+              disabled={status === 'running'}
+            />
+            <button
+              className="chat-send"
+              onClick={handleSend}
+              disabled={status === 'running' || !input.trim()}
+            >
+              Send
+            </button>
+          </div>
+        )}
       </div>
   );
 }

@@ -377,6 +377,10 @@ html, body, #root {
   border-color: #22c55e;
 }
 
+.session-card.expired {
+  opacity: 0.5;
+}
+
 .session-header {
   cursor: pointer;
 }
