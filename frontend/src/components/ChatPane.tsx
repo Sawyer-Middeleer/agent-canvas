@@ -51,6 +51,15 @@ export function ChatPane({
           timestamp: new Date().toISOString(),
           message: { role: m.role, content: m.content },
         });
+      } else if (evt.type === 'result' && evt.is_error && Array.isArray(evt.errors)) {
+        const errorText = (evt.errors as string[]).join('\n');
+        msgs.push({
+          type: 'assistant',
+          uuid: `error-${msgs.length}`,
+          parentUuid: null,
+          timestamp: new Date().toISOString(),
+          message: { role: 'assistant', content: [{ type: 'text', text: `Error: ${errorText}` }] },
+        });
       } else if (evt.type === 'result') {
         // Turn boundary — next user prompt can attach
       }
