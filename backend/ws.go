@@ -82,6 +82,7 @@ func handleSessionWS(ws *websocket.Conn) {
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
 				"--verbose",
+				"--yes",
 			}
 			log.Printf("WS: creating new session %s in %s", sessionID, resolvedPath)
 		} else {
@@ -111,6 +112,7 @@ func handleSessionWS(ws *websocket.Conn) {
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
 				"--verbose",
+				"--yes",
 			}
 			log.Printf("WS: resuming session %s in %s", sessionID, resolvedPath)
 		}
