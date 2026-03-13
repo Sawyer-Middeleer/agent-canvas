@@ -168,19 +168,26 @@ func startAndStream(ctx context.Context, ws *websocket.Conn, cmd **exec.Cmd, dir
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
+		eventCount := 0
 		for scanner.Scan() {
 			// Stop streaming if a newer process has taken over
 			if generation.Load() != myGen {
+				log.Printf("WS stream: generation %d superseded, stopping", myGen)
 				break
 			}
 			line := scanner.Text()
 			var event map[string]interface{}
 			if json.Unmarshal([]byte(line), &event) == nil {
+				eventCount++
+				if t, ok := event["type"].(string); ok {
+					log.Printf("WS stream: event #%d type=%s", eventCount, t)
+				}
 				event["source"] = "stream"
 				websocket.JSON.Send(ws, event)
 			}
 		}
-		c.Wait()
+		exitErr := c.Wait()
+		log.Printf("WS stream: process exited (events=%d, err=%v)", eventCount, exitErr)
 		// Only send "done" if we're still the active generation
 		if generation.Load() == myGen {
 			websocket.JSON.Send(ws, map[string]string{"type": "status", "status": "done"})
