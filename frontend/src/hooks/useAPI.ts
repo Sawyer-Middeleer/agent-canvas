@@ -63,9 +63,28 @@ export function useSessions(projectId: string | null) {
   return { sessions, loading, refresh };
 }
 
-export async function fetchTranscript(projectId: string, sessionId: string, limit?: number): Promise<TranscriptMessage[]> {
-  const params = limit ? `?limit=${limit}` : '';
-  return fetchJSON<TranscriptMessage[]>(`/api/sessions/${projectId}/${sessionId}/transcript${params}`);
+export interface TranscriptResult {
+  messages: TranscriptMessage[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export async function fetchTranscript(
+  projectId: string,
+  sessionId: string,
+  limit?: number,
+  offset?: number,
+): Promise<TranscriptResult> {
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
+  const qs = params.toString() ? `?${params}` : '';
+  const res = await fetch(`${API_BASE}/api/sessions/${projectId}/${sessionId}/transcript${qs}`);
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  const totalCount = parseInt(res.headers.get('X-Total-Count') || '0', 10);
+  const messages: TranscriptMessage[] = await res.json();
+  const loaded = (offset || 0) + messages.length;
+  return { messages, totalCount, hasMore: loaded < totalCount };
 }
 
 export async function archiveSession(projectId: string, sessionId: string): Promise<void> {

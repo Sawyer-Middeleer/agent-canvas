@@ -22,31 +22,59 @@ function formatDate(iso: string): string {
   }
 }
 
+const PAGE_SIZE = 50;
+
 export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
-  const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [input, setInput] = useState('');
 
   // WS hook for resuming the session
-  const { events, status, send } = useSessionWS(projectId, session.sessionId);
+  const { events, partialBlocks, status, send } = useSessionWS(projectId, session.sessionId);
   const [userPrompts, setUserPrompts] = useState<string[]>([]);
 
-  // Fetch existing transcript
+  // Fetch last PAGE_SIZE messages initially
   useEffect(() => {
     if (!session.hasTranscript) {
       setTranscript([]);
       setLoading(false);
+      setHasMore(false);
       return;
     }
     setLoading(true);
-    setTranscript(null);
-    fetchTranscript(projectId, session.sessionId)
-      .then(msgs => setTranscript(msgs))
+    setTranscript([]);
+    fetchTranscript(projectId, session.sessionId, PAGE_SIZE)
+      .then(result => {
+        setTranscript(result.messages);
+        setTotalCount(result.totalCount);
+        setHasMore(result.hasMore);
+      })
       .catch(() => setTranscript([]))
       .finally(() => setLoading(false));
   }, [projectId, session.sessionId, session.hasTranscript]);
+
+  const loadOlder = useCallback(() => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    fetchTranscript(projectId, session.sessionId, PAGE_SIZE, transcript.length)
+      .then(result => {
+        const el = transcriptRef.current;
+        const prevHeight = el?.scrollHeight || 0;
+        setTranscript(prev => [...result.messages, ...prev]);
+        setHasMore(result.hasMore);
+        // Preserve scroll position after prepend
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop += el.scrollHeight - prevHeight;
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  }, [loadingMore, hasMore, totalCount, transcript.length, projectId, session.sessionId]);
 
   // Convert WS streaming events into TranscriptMessages (same as ChatPane)
   const streamMessages = useMemo(() => {
@@ -113,18 +141,7 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
         transcriptRef.current!.scrollTop = transcriptRef.current!.scrollHeight;
       });
     }
-  }, [allMessages]);
-
-  // Poll for updates if session is active (and we haven't started our own WS session)
-  useEffect(() => {
-    if (!session.isActive || !session.hasTranscript || events.length > 0) return;
-    const interval = setInterval(() => {
-      fetchTranscript(projectId, session.sessionId)
-        .then(msgs => setTranscript(msgs))
-        .catch(() => {});
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [session.isActive, session.hasTranscript, projectId, session.sessionId, events.length]);
+  }, [allMessages, partialBlocks]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -190,6 +207,11 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
 
         <div className="detail-transcript" ref={transcriptRef}>
           {loading && <div className="loading">Loading transcript...</div>}
+          {hasMore && (
+            <button className="load-older-btn" onClick={loadOlder} disabled={loadingMore}>
+              {loadingMore ? 'Loading...' : `Load older (${totalCount - transcript.length} more)`}
+            </button>
+          )}
           {allMessages.map((msg, i) => renderMessage(msg, i))}
           {allMessages.length === 0 && !loading && (
             <div className="empty">
@@ -198,7 +220,23 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
                 : 'Transcript file has been cleaned up by Claude Code'}
             </div>
           )}
-          {status === 'running' && streamMessages[streamMessages.length - 1]?.message?.role !== 'assistant' && (
+          {partialBlocks.length > 0 && (
+            <div className="detail-msg assistant">
+              <div className="detail-msg-role">claude</div>
+              <div className="detail-msg-content">
+                {partialBlocks.map(b => (
+                  b.type === 'thinking' ? (
+                    <div key={b.index} className="chat-typing">{b.thinking ? `thinking: ${b.thinking.slice(-200)}` : 'thinking...'}</div>
+                  ) : b.type === 'text' ? (
+                    <div key={b.index} className="block-text">{b.text}</div>
+                  ) : b.type === 'tool_use' ? (
+                    <div key={b.index} className="block-tool-use"><strong>{b.name}</strong></div>
+                  ) : null
+                ))}
+              </div>
+            </div>
+          )}
+          {status === 'running' && partialBlocks.length === 0 && streamMessages[streamMessages.length - 1]?.message?.role !== 'assistant' && (
             <div className="detail-msg assistant">
               <div className="detail-msg-role">claude</div>
               <div className="detail-msg-content">

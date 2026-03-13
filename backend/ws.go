@@ -81,6 +81,7 @@ func handleSessionWS(ws *websocket.Conn) {
 				"--session-id", sessionID,
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
+				"--include-partial-messages",
 				"--verbose",
 				"--yes",
 			}
@@ -111,6 +112,7 @@ func handleSessionWS(ws *websocket.Conn) {
 				"--resume", sessionID,
 				"-p", msg.Prompt,
 				"--output-format", "stream-json",
+				"--include-partial-messages",
 				"--verbose",
 				"--yes",
 			}

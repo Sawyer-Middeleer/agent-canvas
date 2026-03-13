@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -75,8 +76,6 @@ func handleTranscript(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Limit transcript size via query param
-	limitStr := r.URL.Query().Get("limit")
 	messages, err := ReadTranscript(projectID, sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not exist") || strings.Contains(err.Error(), "no such file") {
@@ -87,20 +86,36 @@ func handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply limit
-	if limitStr != "" {
-		var limit int
-		if _, err := json.Number(limitStr).Int64(); err == nil {
-			n, _ := json.Number(limitStr).Int64()
-			limit = int(n)
-			if limit > 0 && limit < len(messages) {
-				messages = messages[len(messages)-limit:]
-			}
+	total := len(messages)
+	w.Header().Set("X-Total-Count", strconv.Itoa(total))
+
+	// Pagination: ?limit=N returns last N messages, ?offset=M skips M from the end
+	limit := total
+	offset := 0
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			limit = n
 		}
-		_ = limit
+	}
+	if s := r.URL.Query().Get("offset"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			offset = n
+		}
 	}
 
-	writeJSON(w, messages)
+	end := total - offset
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end > total {
+		end = total
+	}
+
+	writeJSON(w, messages[start:end])
 }
 
 func handleArchiveSession(w http.ResponseWriter, r *http.Request) {

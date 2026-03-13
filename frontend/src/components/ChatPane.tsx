@@ -16,7 +16,7 @@ export function ChatPane({
   session: ChatSession;
   onClose: () => void;
 }) {
-  const { events, status, send } = useSessionWS(session.projectId, session.sessionId);
+  const { events, partialBlocks, status, send } = useSessionWS(session.projectId, session.sessionId);
   const [input, setInput] = useState('');
   const [userPrompts, setUserPrompts] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -83,7 +83,7 @@ export function ChatPane({
   // Auto-scroll
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, events]);
+  }, [messages, events, partialBlocks]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -128,7 +128,23 @@ export function ChatPane({
             <div className="empty">Send a message to start the session.</div>
           )}
           {messages.map((msg, i) => renderMessage(msg, i))}
-          {status === 'running' && messages[messages.length - 1]?.message?.role !== 'assistant' && (
+          {partialBlocks.length > 0 && (
+            <div className="detail-msg assistant">
+              <div className="detail-msg-role">claude</div>
+              <div className="detail-msg-content">
+                {partialBlocks.map(b => (
+                  b.type === 'thinking' ? (
+                    <div key={b.index} className="chat-typing">{b.thinking ? `thinking: ${b.thinking.slice(-200)}` : 'thinking...'}</div>
+                  ) : b.type === 'text' ? (
+                    <div key={b.index} className="block-text">{b.text}</div>
+                  ) : b.type === 'tool_use' ? (
+                    <div key={b.index} className="block-tool-use"><strong>{b.name}</strong></div>
+                  ) : null
+                ))}
+              </div>
+            </div>
+          )}
+          {status === 'running' && partialBlocks.length === 0 && messages[messages.length - 1]?.message?.role !== 'assistant' && (
             <div className="detail-msg assistant">
               <div className="detail-msg-role">claude</div>
               <div className="detail-msg-content">

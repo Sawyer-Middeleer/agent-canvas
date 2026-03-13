@@ -664,6 +664,24 @@ html, body, #root {
   padding: 12px 16px;
 }
 
+.load-older-btn {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  margin-bottom: 12px;
+  background: var(--card);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.load-older-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
 .detail-msg {
   margin-bottom: 14px;
   display: flex;
