@@ -129,7 +129,7 @@ function App() {
         <div className="error-text">
           Failed to connect to gateway: {error}
           <br />
-          <small>Make sure the Go backend is running on :3333</small>
+          <small>Make sure the backend is running on :3333</small>
         </div>
       </div>
     );

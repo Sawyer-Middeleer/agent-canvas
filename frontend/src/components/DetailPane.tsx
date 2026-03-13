@@ -3,6 +3,7 @@ import type { Session, TranscriptMessage, ContentBlock } from '../types';
 import { fetchTranscript } from '../hooks/useAPI';
 import { useSessionWS } from '../hooks/useSession';
 import { renderMessage } from './MessageRenderer';
+import { PermissionPrompt } from './PermissionPrompt';
 
 interface Props {
   session: Session;
@@ -36,7 +37,7 @@ export function DetailPane({ session, projectId, onClose, onArchive, skipPermiss
   const [input, setInput] = useState('');
 
   // WS hook for resuming the session
-  const { events, partialBlocks, status, send } = useSessionWS(projectId, session.sessionId);
+  const { events, partialBlocks, status, pendingPermissions, send, respondToPermission } = useSessionWS(projectId, session.sessionId);
   const [userPrompts, setUserPrompts] = useState<string[]>([]);
 
   // Fetch last PAGE_SIZE messages initially
@@ -246,6 +247,8 @@ export function DetailPane({ session, projectId, onClose, onArchive, skipPermiss
             </div>
           )}
         </div>
+
+        <PermissionPrompt permissions={pendingPermissions} onRespond={respondToPermission} />
 
         {session.hasTranscript && (
           <div className="chat-input-bar">

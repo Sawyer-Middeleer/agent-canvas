@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSessionWS } from '../hooks/useSession';
 import { renderMessage } from './MessageRenderer';
+import { PermissionPrompt } from './PermissionPrompt';
 import type { TranscriptMessage, ContentBlock } from '../types';
 
 export interface ChatSession {
@@ -18,7 +19,7 @@ export function ChatPane({
   onClose: () => void;
   skipPermissions?: boolean;
 }) {
-  const { events, partialBlocks, status, send } = useSessionWS(session.projectId, session.sessionId);
+  const { events, partialBlocks, status, pendingPermissions, send, respondToPermission } = useSessionWS(session.projectId, session.sessionId);
   const [input, setInput] = useState('');
   const [userPrompts, setUserPrompts] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -155,6 +156,8 @@ export function ChatPane({
             </div>
           )}
         </div>
+
+        <PermissionPrompt permissions={pendingPermissions} onRespond={respondToPermission} />
 
         <div className="chat-input-bar">
           <textarea

@@ -6,6 +6,13 @@ interface StreamEvent {
   [key: string]: unknown;
 }
 
+export interface PermissionRequest {
+  toolUseID: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  decisionReason?: string;
+}
+
 export interface PartialBlock {
   index: number;
   type: string;
@@ -21,6 +28,7 @@ export function useSessionWS(projectId: string, sessionId: string) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [partialBlocks, setPartialBlocks] = useState<PartialBlock[]>([]);
   const [status, setStatus] = useState<Status>('idle');
+  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const messageQueueRef = useRef<string[]>([]);
   const intentionalCloseRef = useRef(false);
@@ -50,6 +58,13 @@ export function useSessionWS(projectId: string, sessionId: string) {
         const data = JSON.parse(e.data);
         if (data.type === 'status') {
           setStatus(data.status === 'done' ? 'done' : data.status === 'running' ? 'running' : 'idle');
+        } else if (data.type === 'permission_request') {
+          setPendingPermissions(prev => [...prev, {
+            toolUseID: data.toolUseID as string,
+            toolName: data.toolName as string,
+            input: data.input as Record<string, unknown>,
+            decisionReason: data.decisionReason as string | undefined,
+          }]);
         } else if (data.type === 'content_block_start') {
           const block = data.content_block as { type: string; name?: string } | undefined;
           setPartialBlocks(prev => [...prev, {
@@ -120,6 +135,19 @@ export function useSessionWS(projectId: string, sessionId: string) {
     }
   }, [connect]);
 
+  const respondToPermission = useCallback((toolUseID: string, approved: boolean, reason?: string) => {
+    const msg = JSON.stringify({
+      type: 'permission_response',
+      toolUseID,
+      approved,
+      reason: reason ?? (approved ? undefined : 'User denied'),
+    });
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(msg);
+    }
+    setPendingPermissions(prev => prev.filter(p => p.toolUseID !== toolUseID));
+  }, []);
+
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
     if (reconnectTimerRef.current) {
@@ -138,5 +166,5 @@ export function useSessionWS(projectId: string, sessionId: string) {
     };
   }, []);
 
-  return { events, partialBlocks, status, connect, send, disconnect };
+  return { events, partialBlocks, status, pendingPermissions, connect, send, respondToPermission, disconnect };
 }
