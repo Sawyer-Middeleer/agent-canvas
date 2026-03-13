@@ -45,12 +45,15 @@ func handleSessionWS(ws *websocket.Conn) {
 
 	// Resolved project path — set once on first prompt, reused for all subsequent prompts.
 	var resolvedPath string
+	// Connection-level permission mode — set on first prompt, reused for all subsequent prompts.
+	skipPerms := false
 
 	for {
 		var msg struct {
-			Type   string `json:"type"`
-			Prompt string `json:"prompt"`
-			Action string `json:"action"` // "create" or "resume" (default)
+			Type            string `json:"type"`
+			Prompt          string `json:"prompt"`
+			Action          string `json:"action"`          // "create" or "resume" (default)
+			SkipPermissions *bool  `json:"skipPermissions"` // optional per-prompt override
 		}
 		if err := websocket.JSON.Receive(ws, &msg); err != nil {
 			log.Printf("WS read error: %v", err)
@@ -71,6 +74,17 @@ func handleSessionWS(ws *websocket.Conn) {
 			cmd = nil
 		}
 
+		// Update permission mode from first prompt (or any prompt that sends it)
+		if msg.SkipPermissions != nil {
+			skipPerms = *msg.SkipPermissions
+		}
+
+		// Permission flag: --dangerously-skip-permissions or --yes
+		permFlag := "--yes"
+		if skipPerms {
+			permFlag = "--dangerously-skip-permissions"
+		}
+
 		// Build CLI args
 		var args []string
 
@@ -83,9 +97,9 @@ func handleSessionWS(ws *websocket.Conn) {
 				"--output-format", "stream-json",
 				"--include-partial-messages",
 				"--verbose",
-				"--yes",
+				permFlag,
 			}
-			log.Printf("WS: creating new session %s in %s", sessionID, resolvedPath)
+			log.Printf("WS: creating new session %s in %s (skipPerms=%v)", sessionID, resolvedPath, skipPerms)
 		} else {
 			// Resume existing session
 			if resolvedPath == "" {
@@ -114,9 +128,9 @@ func handleSessionWS(ws *websocket.Conn) {
 				"--output-format", "stream-json",
 				"--include-partial-messages",
 				"--verbose",
-				"--yes",
+				permFlag,
 			}
-			log.Printf("WS: resuming session %s in %s", sessionID, resolvedPath)
+			log.Printf("WS: resuming session %s in %s (skipPerms=%v)", sessionID, resolvedPath, skipPerms)
 		}
 
 		gen := generation.Add(1)

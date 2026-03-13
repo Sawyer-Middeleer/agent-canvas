@@ -21,6 +21,9 @@ function App() {
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [hideCleanedUp, setHideCleanedUp] = useState(true);
+  const [skipPermissions, setSkipPermissions] = useState(() => {
+    return localStorage.getItem('skipPermissions') !== 'false'; // default true
+  });
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
   });
@@ -29,6 +32,10 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('skipPermissions', String(skipPermissions));
+  }, [skipPermissions]);
 
   // Auto-select first project once loaded, or validate stored selection
   useEffect(() => {
@@ -170,6 +177,14 @@ function App() {
         </button>
 
         <button
+          className={`skip-perms-toggle ${skipPermissions ? 'active' : ''}`}
+          onClick={() => setSkipPermissions(v => !v)}
+          title={skipPermissions ? 'Permissions bypassed (--dangerously-skip-permissions)' : 'Permissions required (--yes)'}
+        >
+          {skipPermissions ? 'Skip Perms' : 'Ask Perms'}
+        </button>
+
+        <button
           className="theme-toggle"
           onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
@@ -214,12 +229,14 @@ function App() {
               projectId={selectedSession.projectId}
               onClose={() => setSelectedSession(null)}
               onArchive={() => handleArchiveSession(selectedSession.session.sessionId)}
+              skipPermissions={skipPermissions}
             />
           ) : chatSession ? (
             <ChatPane
               key={chatSession.sessionId}
               session={chatSession}
               onClose={() => setChatSession(null)}
+              skipPermissions={skipPermissions}
             />
           ) : (
             <div className="right-sidebar-empty">

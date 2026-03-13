@@ -12,9 +12,11 @@ export interface ChatSession {
 export function ChatPane({
   session,
   onClose,
+  skipPermissions,
 }: {
   session: ChatSession;
   onClose: () => void;
+  skipPermissions?: boolean;
 }) {
   const { events, partialBlocks, status, send } = useSessionWS(session.projectId, session.sessionId);
   const [input, setInput] = useState('');
@@ -93,12 +95,12 @@ export function ChatPane({
     setInput('');
 
     if (!sentFirst.current && session.isNew) {
-      send(text, 'create');
+      send(text, 'create', skipPermissions);
     } else {
-      send(text);
+      send(text, undefined, skipPermissions);
     }
     sentFirst.current = true;
-  }, [input, status, session.isNew, send]);
+  }, [input, status, session.isNew, send, skipPermissions]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

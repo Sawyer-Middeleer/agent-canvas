@@ -106,9 +106,10 @@ export function useSessionWS(projectId: string, sessionId: string) {
     };
   }, [projectId, sessionId]);
 
-  const send = useCallback((prompt: string, action?: string) => {
-    const payload: Record<string, string> = { type: 'prompt', prompt };
+  const send = useCallback((prompt: string, action?: string, skipPermissions?: boolean) => {
+    const payload: Record<string, unknown> = { type: 'prompt', prompt };
     if (action) payload.action = action;
+    if (skipPermissions !== undefined) payload.skipPermissions = skipPermissions;
     const msg = JSON.stringify(payload);
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {

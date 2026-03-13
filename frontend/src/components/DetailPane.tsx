@@ -9,6 +9,7 @@ interface Props {
   projectId: string;
   onClose: () => void;
   onArchive?: () => void;
+  skipPermissions?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -24,7 +25,7 @@ function formatDate(iso: string): string {
 
 const PAGE_SIZE = 50;
 
-export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
+export function DetailPane({ session, projectId, onClose, onArchive, skipPermissions }: Props) {
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
@@ -149,8 +150,8 @@ export function DetailPane({ session, projectId, onClose, onArchive }: Props) {
 
     setUserPrompts(prev => [...prev, text]);
     setInput('');
-    send(text); // always resume for existing sessions
-  }, [input, status, send]);
+    send(text, undefined, skipPermissions); // always resume for existing sessions
+  }, [input, status, send, skipPermissions]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
